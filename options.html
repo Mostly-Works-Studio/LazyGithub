@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LazyDeploy — Settings</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      color: #1f2328;
+      background: #f6f8fa;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 48px 5%;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      padding: 32px;
+      width: 100%;
+      max-width: clamp(640px, 80vw, 1100px);
+    }
+
+    .card-header { margin-bottom: 28px; }
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+    .subtitle { color: #656d76; line-height: 1.5; }
+
+    /* ── Section ── */
+    .section { margin-bottom: 0; }
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .section-title label {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      line-height: 1.6;
+    }
+    .badge-success { background: #dafbe1; color: #1a7f37; border: 1px solid #aceebb; }
+    .badge-warning { background: #fff8c5; color: #9a6700; border: 1px solid #e3b341; }
+
+    .hint {
+      font-size: 12px;
+      color: #656d76;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .hint a { color: #0969da; text-decoration: none; }
+    .hint a:hover { text-decoration: underline; }
+
+    /* ── Token configured state ── */
+    .token-configured-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      background: #f6fbf8;
+      border: 1px solid #aceebb;
+      border-radius: 8px;
+    }
+    .token-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .token-check {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #1a7f37;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .token-info-text .token-label {
+      font-weight: 600;
+      font-size: 13px;
+      color: #1a7f37;
+    }
+    .token-info-text .token-mask {
+      font-size: 12px;
+      color: #656d76;
+      font-family: monospace;
+      margin-top: 2px;
+    }
+    .token-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    /* ── Token input state ── */
+    .input-row { display: flex; gap: 8px; }
+    input[type="password"],
+    input[type="text"] {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
+
+    textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: monospace;
+      outline: none;
+      resize: vertical;
+      line-height: 1.5;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-primary   { background: #1f883d; border-color: #1a7f37; color: white; }
+    .btn-primary:hover { background: #1a7f37; }
+    .btn-secondary { background: white; border-color: #d0d7de; color: #1f2328; }
+    .btn-secondary:hover { background: #f3f4f6; }
+    .btn-danger    { background: white; border-color: #cf222e; color: #cf222e; }
+    .btn-danger:hover { background: #fff0ee; }
+
+    /* ── Status ── */
+    .status { margin-top: 12px; font-size: 13px; min-height: 20px; }
+    .status.success { color: #1a7f37; }
+    .status.error   { color: #cf222e; }
+
+    .divider { border: none; border-top: 1px solid #d0d7de; margin: 28px 0; }
+
+    /* ── Scopes box ── */
+    .scopes {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 14px;
+    }
+    .scopes h2 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+    .scopes ul  { padding-left: 18px; }
+    .scopes li  { font-size: 12px; color: #656d76; margin-bottom: 4px; line-height: 1.5; }
+    .scopes code, code {
+      font-family: monospace;
+      background: #eaeef2;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    /* ── Config reference box ── */
+    .reference-box {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .reference-box h2 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #1f2328; }
+    .reference-row { margin-bottom: 10px; }
+    .reference-row:last-child { margin-bottom: 0; }
+    .reference-row strong { font-size: 12px; color: #1f2328; }
+    .reference-row p { font-size: 12px; color: #656d76; margin-top: 2px; line-height: 1.5; }
+
+    .tokens-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .token-pill {
+      font-family: monospace;
+      font-size: 11px;
+      background: #eaeef2;
+      border: 1px solid #d0d7de;
+      border-radius: 4px;
+      padding: 2px 7px;
+      color: #1f2328;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      color: #656d76;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+
+    <!-- ── Header ── -->
+    <div class="card-header">
+      <h1>LazyDeploy</h1>
+      <p class="subtitle">Configure your GitHub token and workflow settings to start deploying directly from PR pages.</p>
+    </div>
+
+    <!-- ── Token ── -->
+    <div class="section">
+      <div class="section-title">
+        <label>GitHub Personal Access Token</label>
+        <span id="token-badge" class="badge badge-success" hidden>✓ Connected</span>
+      </div>
+      <p class="hint">
+        Generate a token at
+        <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens</a>
+        with the scopes listed below.
+      </p>
+
+      <div class="scopes">
+        <h2>Required token scopes</h2>
+        <ul>
+          <li><code>repo</code> — read PR details and comment bodies</li>
+          <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
+        </ul>
+      </div>
+
+      <div style="margin-top: 12px;"></div>
+
+      <!-- Configured state -->
+      <div id="token-configured-box" class="token-configured-box" hidden>
+        <div class="token-info">
+          <div class="token-check">✓</div>
+          <div class="token-info-text">
+            <div class="token-label">Token active</div>
+            <div class="token-mask" id="token-mask">••••••••••••xxxx</div>
+          </div>
+        </div>
+        <div class="token-actions">
+          <button class="btn btn-secondary" id="update-btn">Update</button>
+          <button class="btn btn-danger"    id="clear-btn">Remove</button>
+        </div>
+      </div>
+
+      <!-- Input state -->
+      <div id="token-input-section" class="input-row" hidden>
+        <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+        <button class="btn btn-primary"   id="save-btn">Save</button>
+        <button class="btn btn-secondary" id="cancel-btn" hidden>Cancel</button>
+      </div>
+
+      <p class="status" id="status-msg"></p>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- ── Config ── -->
+    <div class="section">
+      <div class="section-title">
+        <label for="config-input">Extension Configuration</label>
+      </div>
+      <p class="hint">
+        Edit the JSON below to customize workflows, deploy buttons, and filters.
+        Reload the GitHub tab after saving for changes to take effect.
+      </p>
+
+      <div class="reference-box">
+        <h2>Quick Reference</h2>
+
+        <div class="reference-row">
+          <strong>Template tokens</strong> — use in <code>inputs</code> values and <code>buildComment</code>
+          <div class="tokens-grid">
+            <span class="token-pill">{version}</span>
+            <span class="token-pill">{profile}</span>
+            <span class="token-pill">{prTitle}</span>
+            <span class="token-pill">{branchName}</span>
+          </div>
+        </div>
+
+        <div class="reference-row">
+          <strong>Workflow conditions</strong>
+          <p><code>"if": "version:contains:VALUE"</code> or <code>"if": "version:notContains:VALUE"</code>. Omit <code>if</code> for an unconditional default rule.</p>
+        </div>
+
+        <div class="reference-row">
+          <strong>excludedRepos</strong>
+          <p>Repo strings or regex patterns (e.g. <code>"myorg/.*"</code>, <code>"-helm-values$"</code>). No buttons are injected on matching repos.</p>
+        </div>
+
+        <div class="reference-row">
+          <strong>commentAuthorFilter</strong>
+          <p>GitHub usernames or regex patterns. When non-empty, deploy buttons appear only on matching authors' comments.</p>
+        </div>
+
+        <div class="reference-row">
+          <strong>buildButton.hiddenOnStates</strong>
+          <p>PR states that suppress the Build button (e.g. <code>["merged", "closed"]</code>). Leave empty to always show.</p>
+        </div>
+      </div>
+
+      <textarea id="config-input" rows="28" spellcheck="false"></textarea>
+
+      <div class="input-row" style="margin-top: 10px;">
+        <button class="btn btn-primary"   id="save-config-btn">Save Config</button>
+        <button class="btn btn-secondary" id="reset-config-btn">Reset to Defaults</button>
+      </div>
+
+      <p class="status" id="config-status-msg"></p>
+    </div>
+
+    <hr class="divider" />
+    <p class="footer">Made with ❤️ by Mostly Works Studio</p>
+
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>
