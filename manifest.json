@@ -2,12 +2,14 @@
   "manifest_version": 3,
   "name": "LazyDeploy: Deploy Directly From GitHub PRs",
   "description": "Trigger build and deployment workflows directly from GitHub PR comments — no tab switching, no copy-pasting.",
-  "version": "1.0",
+  "version": "1.1.0",
   "icons": {
     "16":  "icon16.png",
     "32":  "icon32.png",
     "48":  "icon48.png",
-    "128": "icon128.png"
+    "128": "icon128.png",
+    "256": "icon256.png",
+    "512": "icon512.png"
   },
   "author": "Mostly Works Studio",
   "permissions": ["storage"],

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome to LazyDeploy</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      color: #1f2328;
+      background: #f6f8fa;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 48px 5%;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      padding: 40px;
+      width: 100%;
+      max-width: clamp(560px, 70vw, 860px);
+    }
+
+    /* ── Header ── */
+    .header { margin-bottom: 36px; }
+    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .header p  { color: #656d76; line-height: 1.6; }
+
+    /* ── Steps ── */
+    .steps { display: flex; flex-direction: column; }
+
+    .step {
+      display: flex;
+      gap: 18px;
+      position: relative;
+      transition: opacity 0.3s;
+    }
+    .step + .step { margin-top: 28px; }
+    .step:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      left: 13px;
+      top: 30px;
+      bottom: -28px;
+      width: 2px;
+      background: #d0d7de;
+      transition: background 0.3s;
+    }
+
+    /* Pending steps are dimmed and non-interactive */
+    .step--pending {
+      opacity: 0.38;
+      pointer-events: none;
+    }
+
+    /* Active step has a highlighted connector above it */
+    .step--active .step-num {
+      background: #0969da;
+      box-shadow: 0 0 0 4px rgba(9, 105, 218, 0.15);
+    }
+
+    /* Completed step: white circle, green tick */
+    .step--done .step-num {      background: white;
+      border: 2px solid #d0d7de;
+      color: #1a7f37;
+      font-size: 13px;
+    }
+    .step--done .step-num::after {
+      content: '✓';
+    }
+    .step--done .step-num span { display: none; }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #6e7781;
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+      margin-top: 2px;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .step-body { flex: 1; }
+    .step-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .step-desc  { font-size: 13px; color: #656d76; line-height: 1.6; margin-bottom: 12px; }
+
+    /* Mute buttons once a step is completed */
+    .step--done .btn {
+      opacity: 0.4;
+    }
+
+    /* ── Scopes box ── */
+    .scopes {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+    }
+    .scopes ul { padding-left: 18px; }
+    .scopes li { font-size: 12px; color: #656d76; margin-bottom: 3px; line-height: 1.5; }
+
+    /* ── Button preview ── */
+    .btn-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .preview-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: white;
+      cursor: default;
+      user-select: none;
+    }
+
+    /* ── Call-to-action buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-primary   { background: #0969da; border-color: #0969da; color: white; }
+    .btn-primary:hover { background: #0860ca; }
+    .btn-secondary { background: white; border-color: #d0d7de; color: #1f2328; }
+    .btn-secondary:hover { background: #f3f4f6; }
+    .btn-success   { background: #1a7f37; border-color: #1a7f37; color: white; }
+    .btn-success:hover { background: #176f30; }
+
+    code {
+      font-family: monospace;
+      background: #eaeef2;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid #d0d7de; margin: 32px 0; }
+
+    /* ── Done banner ── */
+    .done-banner {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 20px;
+      background: #dafbe1;
+      border: 1px solid #aceebb;
+      border-radius: 8px;
+    }
+    .done-banner.visible { display: flex; }
+    .done-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #1a7f37;
+      color: white;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .done-text h3 { font-size: 14px; font-weight: 600; color: #1a7f37; margin-bottom: 3px; }
+    .done-text p  { font-size: 13px; color: #1f6a30; line-height: 1.5; }
+
+    /* ── Footer ── */
+    .footer { text-align: center; font-size: 12px; color: #656d76; margin-top: 32px; }
+
+    /* ── Inline token input (step 2) ── */
+    .ob-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .ob-input-row input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: monospace;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .ob-input-row input:focus {
+      border-color: #0969da;
+      box-shadow: 0 0 0 3px rgba(9,105,218,0.15);
+    }
+    .ob-token-status {
+      font-size: 12px;
+      min-height: 16px;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .ob-token-status.success { color: #1a7f37; }
+    .ob-token-status.error   { color: #cf222e; }
+  </style>
+</head>
+<body>
+  <div class="card">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>Welcome to LazyDeploy 🚀</h1>
+      <p>Two quick steps and you'll be triggering builds and deployments directly from GitHub PR comments — no tab switching, no copy-pasting.</p>
+    </div>
+
+    <!-- Steps -->
+    <div class="steps">
+
+      <!-- Step 1 -->
+      <div class="step step--active" id="step-1">
+        <div class="step-num"><span>1</span></div>
+        <div class="step-body">
+          <div class="step-title">Create a GitHub Personal Access Token</div>
+          <p class="step-desc">
+            LazyDeploy calls the GitHub API to read PR details, post build comments, and dispatch
+            workflow runs. It needs a token to do this on your behalf.
+          </p>
+          <div class="scopes">
+            <ul>
+              <li><code>repo</code> — read PR details and post build trigger comments</li>
+              <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
+            </ul>
+          </div>
+          <button class="btn btn-primary" id="create-token-btn">
+            Create Token on GitHub →
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step step--pending" id="step-2">
+        <div class="step-num"><span>2</span></div>
+        <div class="step-body">
+          <div class="step-title">Paste your GitHub token</div>
+          <p class="step-desc">
+            Paste the token you just created — LazyDeploy validates it instantly.
+          </p>
+          <div class="ob-input-row">
+            <input type="password" id="ob-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+            <button class="btn btn-primary" id="ob-save-btn">Save</button>
+          </div>
+          <p id="ob-token-status" class="ob-token-status"></p>
+          <p class="step-desc">
+            Want to configure workflows or button labels too?
+            <button class="btn btn-secondary" id="ob-settings-btn" style="padding: 3px 10px; font-size: 12px; margin-left: 4px;">Open full settings →</button>
+          </p>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step step--pending" id="step-3">
+        <div class="step-num"><span>3</span></div>
+        <div class="step-body">
+          <div class="step-title">Open any GitHub Pull Request</div>
+          <p class="step-desc">
+            LazyDeploy scans PR comment threads for version strings and injects buttons automatically.
+            Here's what you'll see:
+          </p>
+          <div class="btn-preview">
+            <span class="preview-btn" style="background:#c95f0a;">🔨 Build</span>
+            <span class="preview-btn" style="background:#1f883d;">Deploy to Release</span>
+            <span class="preview-btn" style="background:#0969da;">Deploy to Prod</span>
+          </div>
+          <p class="step-desc" style="margin-bottom:0;">
+            The <strong>Build</strong> button appears in the PR header. <strong>Deploy</strong> buttons
+            appear next to version strings in CI comments — hover a version link to reveal them.
+            Workflow files, inputs, and button labels are all configurable.
+          </p>
+        </div>
+      </div>
+
+    </div>
+
+    <hr class="divider" />
+
+    <div class="done-banner" id="done-banner">
+      <div class="done-icon">✓</div>
+      <div class="done-text">
+        <h3>You're all set!</h3>
+        <p>LazyDeploy is active on all GitHub PR pages. Head over to a PR to try it out.</p>
+      </div>
+    </div>
+
+    <p class="footer">Made with ❤️ by Mostly Works Studio</p>
+
+  </div>
+
+  <script src="onboarding.js"></script>
+</body>
+</html>

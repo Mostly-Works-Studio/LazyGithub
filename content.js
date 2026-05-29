@@ -1,8 +1,8 @@
 // ── Default Config (mirrors background.js DEFAULT_CONFIG) ────────────────────
 
 const DEFAULT_CONFIG = {
-  excludedRepos:       ['-helm-values$'],
-  commentAuthorFilter: ['groww-ci'],
+  excludedRepos:       [],
+  commentAuthorFilter: [],
   extraction: {
     versionRegex:    '\\d{12}-(?:PR\\d+-[a-f0-9]+|\\d+)',
     profileRegex:    'Profile\\s*:\\s*(\\S+)',
@@ -43,6 +43,7 @@ const DEFAULT_CONFIG = {
 };
 
 let CONFIG = DEFAULT_CONFIG;
+let TOKEN_CONFIGURED = false;
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,10 @@ const STYLES = `
     scroll-margin-top: 80px;
   }
 
+  /* Disabled state when no GitHub token is configured */
+  body.wd-token-missing .wd-btn       { opacity: 0.4; cursor: not-allowed; }
+  body.wd-token-missing [data-wd-build] { opacity: 0.4 !important; cursor: not-allowed !important; }
+
   /* Toast */
   #wd-toast-container {
     position: fixed;
@@ -191,6 +196,21 @@ function showToast({ success, message, duration = 5000 }) {
   container.appendChild(toast);
 }
 
+// Navigates to a comment URL after a build. On the same-pathname tab (Conversation)
+// a plain hash change won't reload the page so the new comment might not be in the DOM;
+// we set the hash then force a full reload. On a different-pathname tab (Files Changed
+// etc.) location.href already triggers a full navigation so the server response will
+// always include the new comment.
+function scrollToComment(commentUrl) {
+  const url = new URL(commentUrl);
+  if (url.pathname === location.pathname) {
+    history.replaceState(null, '', url.hash);
+    location.reload();
+  } else {
+    location.href = commentUrl;
+  }
+}
+
 // ── Build Button (PR header) ──────────────────────────────────────────────────
 
 function parsePrFromUrl() {
@@ -256,8 +276,9 @@ function attachBuildButton() {
 
 function makeStickyBuildButton(pr) {
   const btn = document.createElement('button');
-  btn.innerHTML = CONFIG.buildButton.label;
-  btn.title     = 'Post build comment and start build';
+  btn.innerHTML        = CONFIG.buildButton.label;
+  btn.title            = 'Post build comment and start build';
+  btn.dataset.wdBuild  = '1';
 
   const stateLabel =
     document.querySelector('[class*="StateLabel-Icon"]')?.parentElement ??
@@ -290,6 +311,11 @@ function makeStickyBuildButton(pr) {
   applyStyle(CONFIG.buildButton.color);
 
   btn.addEventListener('click', () => {
+    if (!TOKEN_CONFIGURED) {
+      showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+      chrome.runtime.sendMessage({ type: 'openOptions' });
+      return;
+    }
     btn.innerHTML = '⏳ Starting Build…';
     applyStyle(CONFIG.buildButton.color, 'default', '0.7');
     btn.disabled = true;
@@ -301,7 +327,7 @@ function makeStickyBuildButton(pr) {
       if (res?.success) {
         btn.innerHTML = '✓ Build Started';
         applyStyle('#1a7f37');
-        setTimeout(() => { location.href = res.commentUrl; }, 1200);
+        setTimeout(() => scrollToComment(res.commentUrl), 500);
         setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; applyStyle(CONFIG.buildButton.color); btn.disabled = false; }, 5000);
       } else {
         btn.innerHTML = '✗ Failed';
@@ -313,13 +339,23 @@ function makeStickyBuildButton(pr) {
     });
   });
 
+  btn.addEventListener('mouseenter', () => {
+    if (btn.disabled) return;
+    if (!TOKEN_CONFIGURED) btn.innerHTML = '⚠️ Token required';
+  });
+  btn.addEventListener('mouseleave', () => {
+    if (btn.disabled) return;
+    btn.innerHTML = CONFIG.buildButton.label;
+  });
+
   return btn;
 }
 
 function makeBuildButton(pr, sibling) {
   const btn = document.createElement('button');
-  btn.innerHTML = CONFIG.buildButton.label;
-  btn.title     = 'Post build comment and start build';
+  btn.innerHTML        = CONFIG.buildButton.label;
+  btn.title            = 'Post build comment and start build';
+  btn.dataset.wdBuild  = '1';
 
   if (sibling) {
     const s = window.getComputedStyle(sibling);
@@ -339,6 +375,11 @@ function makeBuildButton(pr, sibling) {
     applyStyle(CONFIG.buildButton.color, 'white');
 
     btn.addEventListener('click', () => {
+      if (!TOKEN_CONFIGURED) {
+        showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+        chrome.runtime.sendMessage({ type: 'openOptions' });
+        return;
+      }
       btn.innerHTML = '⏳ Starting Build…';
       applyStyle(CONFIG.buildButton.color, 'white', 'default', '0.7');
       btn.disabled = true;
@@ -350,7 +391,7 @@ function makeBuildButton(pr, sibling) {
         if (res?.success) {
           btn.innerHTML = '✓ Build Started';
           applyStyle('#1a7f37', 'white');
-          setTimeout(() => { location.href = res.commentUrl; }, 1200);
+          setTimeout(() => scrollToComment(res.commentUrl), 500);
           setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; applyStyle(CONFIG.buildButton.color, 'white'); btn.disabled = false; }, 5000);
         } else {
           btn.innerHTML = '✗ Failed';
@@ -361,13 +402,35 @@ function makeBuildButton(pr, sibling) {
         }
       });
     });
+
+    btn.addEventListener('mouseenter', () => {
+      if (btn.disabled) return;
+      if (!TOKEN_CONFIGURED) btn.innerHTML = '⚠️ Token required';
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (btn.disabled) return;
+      btn.innerHTML = CONFIG.buildButton.label;
+    });
   } else {
     btn.className          = 'wd-build-btn';
     btn.style.background   = CONFIG.buildButton.color;
-    btn.addEventListener('mouseenter', () => { btn.style.filter = 'brightness(0.85)'; });
-    btn.addEventListener('mouseleave', () => { btn.style.filter = ''; });
+    btn.addEventListener('mouseenter', () => {
+      if (btn.disabled) return;
+      if (!TOKEN_CONFIGURED) btn.innerHTML = '⚠️ Token required';
+      else btn.style.filter = 'brightness(0.85)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.filter = '';
+      if (btn.disabled) return;
+      btn.innerHTML = CONFIG.buildButton.label;
+    });
 
     btn.addEventListener('click', () => {
+      if (!TOKEN_CONFIGURED) {
+        showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+        chrome.runtime.sendMessage({ type: 'openOptions' });
+        return;
+      }
       btn.innerHTML = '⏳ Starting Build…';
       btn.className = 'wd-build-btn wd-loading';
       btn.style.background = CONFIG.buildButton.color;
@@ -380,7 +443,7 @@ function makeBuildButton(pr, sibling) {
         if (res?.success) {
           btn.innerHTML = '✓ Build Started';
           btn.className = 'wd-build-btn wd-success';
-          setTimeout(() => { location.href = res.commentUrl; }, 1200);
+          setTimeout(() => scrollToComment(res.commentUrl), 500);
           setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; btn.className = 'wd-build-btn'; btn.style.background = CONFIG.buildButton.color; btn.disabled = false; }, 5000);
         } else {
           btn.innerHTML = '✗ Failed';
@@ -402,8 +465,15 @@ function createDeployButton({ label, color }) {
   const btn = document.createElement('span');
   btn.className        = 'wd-btn';
   btn.textContent      = label;
+  btn.dataset.label    = label;
   btn.title            = label;
   btn.style.background = color;
+  btn.addEventListener('mouseenter', () => {
+    if (!TOKEN_CONFIGURED) btn.textContent = '⚠️ Token required';
+  });
+  btn.addEventListener('mouseleave', () => {
+    btn.textContent = btn.dataset.label;
+  });
   return btn;
 }
 
@@ -443,6 +513,12 @@ function attachDeployClickHandler(btn, link, btnConfig) {
   btn.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (!TOKEN_CONFIGURED) {
+      showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+      chrome.runtime.sendMessage({ type: 'openOptions' });
+      return;
+    }
 
     btn.textContent      = 'Deploying…';
     btn.className        = 'wd-btn wd-visible wd-loading';
@@ -542,8 +618,10 @@ function scan() {
 }
 
 function init() {
-  chrome.storage.sync.get('extensionConfig', data => {
-    CONFIG = data.extensionConfig ?? DEFAULT_CONFIG;
+  chrome.storage.sync.get(['extensionConfig', 'githubToken'], data => {
+    CONFIG           = data.extensionConfig ?? DEFAULT_CONFIG;
+    TOKEN_CONFIGURED = !!data.githubToken;
+    document.body.classList.toggle('wd-token-missing', !TOKEN_CONFIGURED);
     scan();
     new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
   });
@@ -551,6 +629,10 @@ function init() {
   chrome.storage.onChanged.addListener(changes => {
     if (changes.extensionConfig) {
       CONFIG = changes.extensionConfig.newValue ?? DEFAULT_CONFIG;
+    }
+    if (changes.githubToken) {
+      TOKEN_CONFIGURED = !!changes.githubToken.newValue;
+      document.body.classList.toggle('wd-token-missing', !TOKEN_CONFIGURED);
     }
   });
 }

@@ -1,8 +1,8 @@
 const GITHUB_API_BASE = 'https://api.github.com';
 
 const DEFAULT_CONFIG = {
-  excludedRepos:       ['-helm-values$'],
-  commentAuthorFilter: ['groww-ci'],
+  excludedRepos:       [],
+  commentAuthorFilter: [],
   extraction: {
     versionRegex:    '\\d{12}-(?:PR\\d+-[a-f0-9]+|\\d+)',
     profileRegex:    'Profile\\s*:\\s*(\\S+)',
@@ -237,11 +237,21 @@ async function handleBuild(msg, token) {
 
 // ── Message Router ────────────────────────────────────────────────────────────
 
+chrome.runtime.onInstalled.addListener(details => {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') });
+  }
+});
+
 chrome.action.onClicked.addListener(() => {
   chrome.runtime.openOptionsPage();
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === 'openOptions') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html') + '?reason=no-token' });
+    return;
+  }
   if (msg.type !== 'trigger' && msg.type !== 'build') return;
 
   (async () => {
