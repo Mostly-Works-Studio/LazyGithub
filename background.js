@@ -13,8 +13,8 @@ const DEFAULT_CONFIG = {
     label:          '🔨 Build',
     color:          '#c95f0a',
     hiddenOnStates: ['merged', 'closed'],
+    action: { type: 'comment', comment: '/deploy {branchName}' },
   },
-  buildComment: '/deploy {branchName}',
   deployButtons: [
     {
       label: 'Deploy to Release',
@@ -219,20 +219,75 @@ async function handleTrigger(msg, token, config) {
     : { success: true, count: builds.length };
 }
 
-// ── Post Build Comment ────────────────────────────────────────────────────────
+// ── Build Action ──────────────────────────────────────────────────────────────
 
 async function handleBuild(msg, token) {
-  const pr         = await githubGet(`/repos/${msg.repo}/pulls/${msg.prNumber}`, token);
-  const branchName = pr.head.ref;
-  const body       = resolveTemplate(msg.buildComment, { branchName });
+  const [prResult, repoResult] = await Promise.allSettled([
+    githubGet(`/repos/${msg.repo}/pulls/${msg.prNumber}`, token),
+    githubGet(`/repos/${msg.repo}`, token),
+  ]);
 
-  const comment = await githubPost(
-    `/repos/${msg.repo}/issues/${msg.prNumber}/comments`,
-    { body },
-    token
-  );
+  if (prResult.status === 'rejected') throw prResult.reason;
 
-  return { success: true, commentUrl: comment.html_url };
+  const pr            = prResult.value;
+  const defaultBranch = repoResult.status === 'fulfilled' ? repoResult.value.default_branch : 'main';
+  const ctx           = {
+    branchName: pr.head.ref,
+    prTitle:    pr.title ?? '',
+    prNumber:   msg.prNumber,
+    repo:       msg.repo,
+  };
+  const action = msg.buildAction;
+
+  function resolveObj(obj) {
+    const out = {};
+    for (const [k, v] of Object.entries(obj ?? {})) out[k] = resolveTemplate(String(v), ctx);
+    return out;
+  }
+
+  if (action.type === 'comment') {
+    const comment = await githubPost(
+      `/repos/${msg.repo}/issues/${msg.prNumber}/comments`,
+      { body: resolveTemplate(action.comment ?? '', ctx) },
+      token
+    );
+    return { success: true, commentUrl: comment.html_url };
+  }
+
+  if (action.type === 'workflow') {
+    await githubPost(
+      `/repos/${msg.repo}/actions/workflows/${action.file}/dispatches`,
+      { ref: defaultBranch, inputs: resolveObj(action.inputs) },
+      token
+    );
+    return { success: true };
+  }
+
+  if (action.type === 'repositoryDispatch') {
+    await githubPost(
+      `/repos/${msg.repo}/dispatches`,
+      { event_type: resolveTemplate(action.eventType ?? '', ctx), client_payload: resolveObj(action.payload) },
+      token
+    );
+    return { success: true };
+  }
+
+  if (action.type === 'deployment') {
+    await githubPost(
+      `/repos/${msg.repo}/deployments`,
+      {
+        ref:               ctx.branchName,
+        environment:       resolveTemplate(action.environment ?? 'production', ctx),
+        payload:           resolveObj(action.payload),
+        auto_merge:        false,
+        required_contexts: [],
+      },
+      token
+    );
+    return { success: true };
+  }
+
+  throw new Error(`Unknown action type "${action.type}". Use: comment, workflow, repositoryDispatch, deployment.`);
 }
 
 // ── Message Router ────────────────────────────────────────────────────────────

@@ -13,8 +13,10 @@ const DEFAULT_CONFIG = {
     label:          '🔨 Build',
     color:          '#c95f0a',
     hiddenOnStates: ['merged', 'closed'],
+    action: { type: 'comment', comment: '/deploy {branchName}' },
   },
-  buildComment: '/deploy {branchName}',
+  groups: [],
+  repos: {},
   deployButtons: [
     {
       label: 'Deploy to Release',
@@ -42,7 +44,51 @@ const DEFAULT_CONFIG = {
   ],
 };
 
+let GLOBAL_CONFIG = DEFAULT_CONFIG;
 let CONFIG = DEFAULT_CONFIG;
+
+// ── Config Resolution ─────────────────────────────────────────────────────────
+
+function deepMergeConfig(base, override) {
+  const result = { ...base };
+  for (const key of Object.keys(override)) {
+    if (
+      result[key] !== null &&
+      typeof result[key] === 'object' &&
+      !Array.isArray(result[key]) &&
+      override[key] !== null &&
+      typeof override[key] === 'object' &&
+      !Array.isArray(override[key])
+    ) {
+      result[key] = { ...result[key], ...override[key] };
+    } else {
+      result[key] = override[key];
+    }
+  }
+  return result;
+}
+
+function resolveConfig(globalConfig, repo) {
+  let resolved = { ...globalConfig };
+
+  for (const group of globalConfig.groups ?? []) {
+    const matched = (group.repos ?? []).some(pattern => {
+      if (pattern === repo) return true;
+      try { return new RegExp(pattern).test(repo); }
+      catch { return false; }
+    });
+    if (matched) {
+      resolved = deepMergeConfig(resolved, group.config ?? {});
+      break;
+    }
+  }
+
+  const repoConfig = (globalConfig.repos ?? {})[repo];
+  if (repoConfig) resolved = deepMergeConfig(resolved, repoConfig);
+
+  return resolved;
+}
+
 let TOKEN_CONFIGURED = false;
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -386,12 +432,12 @@ function makeBuildButton(pr, sibling) {
 
       chrome.runtime.sendMessage({
         type: 'build', repo: pr.repo, prNumber: pr.prNumber,
-        buildComment: CONFIG.buildComment,
+        buildAction: CONFIG.buildButton?.action ?? { type: 'comment', comment: CONFIG.buildComment ?? '' },
       }, res => {
         if (res?.success) {
           btn.innerHTML = '✓ Build Started';
           applyStyle('#1a7f37', 'white');
-          setTimeout(() => scrollToComment(res.commentUrl), 500);
+          if (res.commentUrl) setTimeout(() => scrollToComment(res.commentUrl), 500);
           setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; applyStyle(CONFIG.buildButton.color, 'white'); btn.disabled = false; }, 5000);
         } else {
           btn.innerHTML = '✗ Failed';
@@ -438,12 +484,12 @@ function makeBuildButton(pr, sibling) {
 
       chrome.runtime.sendMessage({
         type: 'build', repo: pr.repo, prNumber: pr.prNumber,
-        buildComment: CONFIG.buildComment,
+        buildAction: CONFIG.buildButton?.action ?? { type: 'comment', comment: CONFIG.buildComment ?? '' },
       }, res => {
         if (res?.success) {
           btn.innerHTML = '✓ Build Started';
           btn.className = 'wd-build-btn wd-success';
-          setTimeout(() => scrollToComment(res.commentUrl), 500);
+          if (res.commentUrl) setTimeout(() => scrollToComment(res.commentUrl), 500);
           setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; btn.className = 'wd-build-btn'; btn.style.background = CONFIG.buildButton.color; btn.disabled = false; }, 5000);
         } else {
           btn.innerHTML = '✗ Failed';
@@ -573,6 +619,7 @@ function isRepoExcluded() {
   const match = location.pathname.match(/^\/([^/]+\/[^/]+)/);
   if (!match) return false;
   const repo = match[1];
+  if ((GLOBAL_CONFIG.repos ?? {})[repo]) return false;
   for (const pattern of CONFIG.excludedRepos ?? []) {
     try { if (new RegExp(pattern).test(repo)) return true; }
     catch { /* ignore invalid regex */ }
@@ -619,7 +666,9 @@ function scan() {
 
 function init() {
   chrome.storage.sync.get(['extensionConfig', 'githubToken'], data => {
-    CONFIG           = data.extensionConfig ?? DEFAULT_CONFIG;
+    GLOBAL_CONFIG    = data.extensionConfig ?? DEFAULT_CONFIG;
+    const pr         = parsePrFromUrl();
+    CONFIG           = resolveConfig(GLOBAL_CONFIG, pr?.repo ?? '');
     TOKEN_CONFIGURED = !!data.githubToken;
     document.body.classList.toggle('wd-token-missing', !TOKEN_CONFIGURED);
     scan();
@@ -628,7 +677,9 @@ function init() {
 
   chrome.storage.onChanged.addListener(changes => {
     if (changes.extensionConfig) {
-      CONFIG = changes.extensionConfig.newValue ?? DEFAULT_CONFIG;
+      GLOBAL_CONFIG = changes.extensionConfig.newValue ?? DEFAULT_CONFIG;
+      const pr      = parsePrFromUrl();
+      CONFIG        = resolveConfig(GLOBAL_CONFIG, pr?.repo ?? '');
     }
     if (changes.githubToken) {
       TOKEN_CONFIGURED = !!changes.githubToken.newValue;
