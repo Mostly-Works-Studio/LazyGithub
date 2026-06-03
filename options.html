@@ -157,7 +157,14 @@
     }
     .field-row:last-child { margin-bottom: 0; }
     .field-row--top { align-items: flex-start; }
-    .field-label { font-size: 12px; font-weight: 500; color: #57606a; }
+    .field-label { font-size: 12px; font-weight: 500; color: #57606a; display: inline-flex; align-items: center; gap: 4px; }
+    .field-hint {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0;
+      background: #d0d7de; color: #57606a; font-size: 9px; font-weight: 700;
+      cursor: help; line-height: 1; font-style: normal;
+    }
+    .field-hint:hover { background: #8c959f; color: white; }
 
     .field-input {
       padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 6px;
@@ -212,7 +219,15 @@
       padding: 7px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
     }
     .deploy-card-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .deploy-card-name { flex: 1; font-size: 12px; font-weight: 600; color: #1f2328; }
+    .deploy-card-name-wrap { flex: 1; display: flex; align-items: center; min-width: 0; }
+    .deploy-card-name {
+      font-size: 12px; font-weight: 600; color: #1f2328;
+      background: transparent; border: 1px solid transparent; outline: none;
+      padding: 2px 4px; border-radius: 4px; font-family: inherit;
+      field-sizing: content; min-width: 40px; max-width: 100%;
+    }
+    .deploy-card-name:hover { border-color: #d0d7de; background: white; }
+    .deploy-card-name:focus { border-color: #0969da; background: white; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
     .deploy-card-body { padding: 10px 12px; }
     .deploy-card-body .field-row { grid-template-columns: 100px 1fr; margin-bottom: 7px; }
     .deploy-card-body .field-label { font-size: 11px; }
@@ -225,7 +240,15 @@
       display: flex; align-items: center; gap: 8px;
       padding: 8px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
     }
-    .override-card-repo-name { flex: 1; font-weight: 600; }
+    .override-card-name-wrap { flex: 1; display: flex; align-items: center; min-width: 0; }
+    .override-card-repo-name {
+      font-weight: 600; font-size: 13px;
+      background: transparent; border: 1px solid transparent; outline: none;
+      padding: 2px 4px; border-radius: 4px; font-family: inherit;
+      field-sizing: content; min-width: 60px; max-width: 100%;
+    }
+    .override-card-repo-name:hover { border-color: #d0d7de; background: white; }
+    .override-card-repo-name:focus { border-color: #0969da; background: white; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
     .override-card-repos { padding: 10px 12px; border-bottom: 1px solid #eaeef2; }
 
     .override-section { border-bottom: 1px solid #eaeef2; }
@@ -239,13 +262,118 @@
     .override-toggle { flex-shrink: 0; cursor: pointer; accent-color: #0969da; }
     .inherited-badge { font-size: 11px; color: #8c959f; font-weight: 400; margin-left: auto; }
     .override-section-body { padding: 8px 12px 10px; }
+    .override-mode-row { display: flex; gap: 16px; margin-bottom: 8px; padding: 6px 8px; background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; }
+    .override-copy-btn { margin-bottom: 8px; }
     .override-section-body .field-row { grid-template-columns: 110px 1fr; margin-bottom: 7px; }
     .override-section-body .field-row:last-child { margin-bottom: 0; }
     .override-section-body .action-subform { padding-left: 118px; }
     .override-section-body .action-subform .field-row { grid-template-columns: 100px 1fr; }
     .override-section-body .deploy-card { margin: 0 0 8px; }
 
+    /* ── Validation error highlighting ── */
+    .validation-error { border-color: #cf222e !important; box-shadow: 0 0 0 3px rgba(207,34,46,0.15) !important; }
+    .deploy-card.card-error  { border-color: #cf222e; box-shadow: 0 0 0 2px rgba(207,34,46,0.12); }
+    .override-card.card-error { border-color: #cf222e; box-shadow: 0 0 0 2px rgba(207,34,46,0.12); }
+    .inline-error-msg { font-size: 12px; color: #cf222e; background: #fff5f5; border: 1px solid #ffcdd2; border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; }
+
     .footer { text-align: center; font-size: 12px; color: #656d76; }
+
+    /* ── Token cards (per-action token list) ── */
+    .token-list { margin-bottom: 6px; }
+    .token-list .deploy-card { margin: 0 0 6px; }
+
+    /* ── On-multiple radio group ── */
+    .on-multiple-group { display: flex; flex-direction: column; gap: 5px; padding-top: 2px; }
+
+    /* ── Conditional rules building block ── */
+    .cond-rule-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 5px; }
+    .cond-rule-row { display: grid; grid-template-columns: auto 1fr auto 1.5fr auto; gap: 5px; align-items: center; }
+    .cond-arrow { font-size: 11px; color: #8c959f; padding: 0 2px; }
+
+    /* ── Drag and drop ── */
+    .drag-handle {
+      cursor: grab; color: #c0c7cf; padding: 0 2px;
+      font-size: 14px; flex-shrink: 0; user-select: none; line-height: 1;
+    }
+    .drag-handle:hover { color: #57606a; }
+    .drag-handle:active { cursor: grabbing; }
+    .wd-dragging { opacity: 0.35; }
+    .drag-before { box-shadow: 0 -2px 0 0 #0969da; }
+    .drag-after  { box-shadow: 0  2px 0 0 #0969da; }
+    .cond-mode-toggle {
+      background: none; border: none; padding: 0;
+      font-size: 11px; color: #0969da; cursor: pointer;
+      display: inline-block; margin-top: 3px; line-height: 1.4;
+    }
+    .cond-mode-toggle:hover { text-decoration: underline; }
+
+    /* ── Collapsible action cards ── */
+    .deploy-card-header { cursor: pointer; }
+    .deploy-card-header:hover { background: #edf0f3; }
+    .card-chevron { font-size: 18px; color: #57606a; flex-shrink: 0; margin-right: 4px; transition: transform 0.15s; }
+    .deploy-card.collapsed > .deploy-card-body { display: none; }
+    .deploy-card.collapsed .card-chevron { transform: rotate(-90deg); }
+
+    /* ── Collapsible form sections ── */
+    .form-section-header { cursor: default; }
+    .form-section.collapsible .form-section-header { cursor: pointer; }
+    .form-section.collapsible .form-section-header:hover { background: #edf0f3; }
+    .form-section-chevron { font-size: 18px; color: #57606a; flex-shrink: 0; transition: transform 0.15s; }
+    .form-section.collapsible.collapsed .form-section-body { display: none; }
+    .form-section.collapsible.collapsed .form-section-chevron { transform: rotate(-90deg); }
+
+    /* ── Collapsible override cards (groups / repos) ── */
+    .override-card-chevron { font-size: 18px; color: #57606a; cursor: pointer; flex-shrink: 0; transition: transform 0.15s; }
+    .override-card.collapsed > :not(.override-card-header) { display: none; }
+    .override-card.collapsed .override-card-chevron { transform: rotate(-90deg); }
+
+    /* ── JSON modal ── */
+    .json-modal-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .json-modal {
+      background: white; border-radius: 10px; padding: 24px;
+      width: 90%; max-width: 740px; max-height: 90vh;
+      display: flex; flex-direction: column; gap: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .json-modal-header { display: flex; align-items: center; justify-content: space-between; }
+    .json-modal-header h3 { font-size: 16px; font-weight: 600; margin: 0; }
+    .json-modal textarea {
+      flex: 1; min-height: 380px; font-family: monospace; font-size: 12px;
+      line-height: 1.5; padding: 10px; border: 1px solid #d0d7de;
+      border-radius: 6px; resize: vertical; outline: none;
+    }
+    .json-modal textarea:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
+    .json-modal-actions { display: flex; align-items: center; gap: 8px; }
+    .feedback-sep-line { border-top: 1px solid #eaeef2; margin: 8px -12px 8px; }
+    .feedback-pair { display: grid; grid-template-columns: 1fr auto 1.1fr; gap: 5px; align-items: center; }
+    .feedback-sep  { font-size: 11px; color: #8c959f; white-space: nowrap; }
+
+    @keyframes wd-highlight-flash {
+      0%   { box-shadow: 0 0 0 3px rgba(9,105,218,0.35), inset 0 0 0 9999px rgba(9,105,218,0.08); }
+      100% { box-shadow: none; }
+    }
+    .wd-highlight { animation: wd-highlight-flash 1.4s ease-out forwards; }
+
+    /* ── Collapsible feedback section inside action cards ── */
+    .feedback-section { border-top: 1px solid #eaeef2; margin-top: 6px; }
+    .feedback-section-header {
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 0; font-size: 12px; font-weight: 500; color: #57606a;
+      cursor: pointer; user-select: none;
+    }
+    .feedback-section-header:hover { color: #1f2328; }
+    .feedback-chevron { font-size: 18px; transition: transform 0.15s; line-height: 1; }
+    .feedback-section.collapsed .feedback-section-header .feedback-chevron { transform: rotate(-90deg); }
+    .feedback-section.collapsed .feedback-section-body { display: none; }
+    .feedback-subsection-title {
+      font-size: 11px; font-weight: 600; color: #8c959f; text-transform: uppercase;
+      letter-spacing: 0.04em; margin: 10px 0 6px;
+    }
+    .feedback-subsection-title:first-child { margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -264,43 +392,51 @@
     </div>
 
     <!-- ── Token ── -->
-    <div class="section">
-      <div class="section-title">
-        <label>GitHub Personal Access Token</label>
-        <span id="token-badge" class="badge badge-success" hidden>✓ Connected</span>
+    <div class="feedback-section" id="token-section">
+      <div class="feedback-section-header">
+        <span class="feedback-chevron">▾</span>
+        GitHub Personal Access Token
+        <span id="token-badge" class="badge badge-success" hidden style="margin-left:4px;">✓ Connected</span>
       </div>
-      <p class="hint">
-        Generate a token at
-        <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens</a>
-        with the scopes listed below.
-      </p>
-      <div class="scopes">
-        <h2>Required token scopes</h2>
-        <ul>
-          <li><code>repo</code> — read PR details and comment bodies</li>
-          <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
-        </ul>
-      </div>
-      <div style="margin-top: 12px;"></div>
-      <div id="token-configured-box" class="token-configured-box" hidden>
-        <div class="token-info">
-          <div class="token-check">✓</div>
-          <div class="token-info-text">
-            <div class="token-label">Token active</div>
-            <div class="token-mask" id="token-mask">••••••••••••xxxx</div>
+      <div class="feedback-section-body" style="padding-top: 10px;">
+        <p class="hint">
+          Generate a token at
+          <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens</a>
+          with the scopes listed below.
+        </p>
+        <div class="scopes">
+          <h2>Required token scopes</h2>
+          <ul>
+            <li><code>repo</code> — read PR details, post comments, create deployments, and trigger repository dispatch events</li>
+            <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
+          </ul>
+          <p style="font-size:11px;color:#656d76;margin-top:8px;line-height:1.5;">
+            <strong>Note:</strong> If your organisation enforces SAML SSO, you must also
+            <a href="https://docs.github.com/en/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on" target="_blank">authorise this token for SSO</a>
+            after creating it, otherwise API calls to that org will be rejected.
+          </p>
+        </div>
+        <div style="margin-top: 12px;"></div>
+        <div id="token-configured-box" class="token-configured-box" hidden>
+          <div class="token-info">
+            <div class="token-check">✓</div>
+            <div class="token-info-text">
+              <div class="token-label">Token active</div>
+              <div class="token-mask" id="token-mask">••••••••••••xxxx</div>
+            </div>
+          </div>
+          <div class="token-actions">
+            <button class="btn btn-secondary" id="update-btn">Update</button>
+            <button class="btn btn-danger"    id="clear-btn">Remove</button>
           </div>
         </div>
-        <div class="token-actions">
-          <button class="btn btn-secondary" id="update-btn">Update</button>
-          <button class="btn btn-danger"    id="clear-btn">Remove</button>
+        <div id="token-input-section" class="input-row" hidden>
+          <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+          <button class="btn btn-primary"   id="save-btn">Save</button>
+          <button class="btn btn-secondary" id="cancel-btn" hidden>Cancel</button>
         </div>
+        <p class="status" id="status-msg"></p>
       </div>
-      <div id="token-input-section" class="input-row" hidden>
-        <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
-        <button class="btn btn-primary"   id="save-btn">Save</button>
-        <button class="btn btn-secondary" id="cancel-btn" hidden>Cancel</button>
-      </div>
-      <p class="status" id="status-msg"></p>
     </div>
 
     <hr class="divider" />
@@ -311,7 +447,8 @@
         <label>Extension Configuration</label>
       </div>
       <p class="hint">
-        Customize workflows, deploy buttons, and per-repo overrides.
+        Configure actions, tokens, and per-repo overrides. Click any section header to expand it.
+        Use <strong>{ } JSON</strong> to export your config or import one from a teammate.
         Reload the GitHub tab after saving for changes to take effect.
       </p>
 
@@ -325,149 +462,72 @@
       <!-- ── Global tab ── -->
       <div class="tab-panel" id="tab-global">
 
-        <!-- Build Button -->
-        <div class="form-section">
-          <div class="form-section-header">Build Button</div>
-          <div class="form-section-body">
-            <div class="field-row">
-              <span class="field-label">Label</span>
-              <input type="text" id="bb-label" class="field-input" placeholder="🔨 Build">
-            </div>
-            <div class="field-row">
-              <span class="field-label">Color</span>
-              <div class="color-group">
-                <input type="color" id="bb-color-picker" value="#c95f0a">
-                <input type="text"  id="bb-color-hex" class="field-input field-input--mono" maxlength="7" placeholder="#c95f0a">
-              </div>
-            </div>
-            <div class="field-row">
-              <span class="field-label">Hide on PR state</span>
-              <div class="checkbox-group">
-                <label class="checkbox-label"><input type="checkbox" id="bb-hide-merged"> merged</label>
-                <label class="checkbox-label"><input type="checkbox" id="bb-hide-closed"> closed</label>
-              </div>
-            </div>
-            <div class="field-row">
-              <span class="field-label">Action type</span>
-              <select id="bb-action-type" class="field-select">
-                <option value="comment">Post PR comment</option>
-                <option value="workflow">Dispatch workflow</option>
-                <option value="repositoryDispatch">Repository dispatch</option>
-                <option value="deployment">Create deployment</option>
-              </select>
-            </div>
-
-            <!-- comment -->
-            <div id="bb-sub-comment" class="action-subform">
-              <div class="field-row">
-                <span class="field-label">Comment text</span>
-                <input type="text" id="bb-comment" class="field-input field-input--mono" placeholder="/deploy {branchName}">
-              </div>
-            </div>
-
-            <!-- workflow -->
-            <div id="bb-sub-workflow" class="action-subform" hidden>
-              <div class="field-row">
-                <span class="field-label">Workflow file</span>
-                <input type="text" id="bb-wf-file" class="field-input field-input--mono" placeholder="build.yaml">
-              </div>
-              <div class="field-row field-row--top">
-                <span class="field-label">Inputs</span>
-                <div>
-                  <div class="kv-list" id="bb-wf-inputs"></div>
-                  <button class="btn btn-secondary btn-xs" id="bb-wf-inputs-add">+ Add Input</button>
-                  <p class="sub-note">Tokens: <code>{branchName}</code> <code>{prTitle}</code> <code>{prNumber}</code> <code>{repo}</code></p>
-                </div>
-              </div>
-            </div>
-
-            <!-- repositoryDispatch -->
-            <div id="bb-sub-repodispatch" class="action-subform" hidden>
-              <div class="field-row">
-                <span class="field-label">Event type</span>
-                <input type="text" id="bb-rd-event" class="field-input field-input--mono" placeholder="build-triggered">
-              </div>
-              <div class="field-row field-row--top">
-                <span class="field-label">Payload</span>
-                <div>
-                  <div class="kv-list" id="bb-rd-payload"></div>
-                  <button class="btn btn-secondary btn-xs" id="bb-rd-payload-add">+ Add Field</button>
-                  <p class="sub-note">Tokens: <code>{branchName}</code> <code>{prTitle}</code> <code>{prNumber}</code> <code>{repo}</code></p>
-                </div>
-              </div>
-            </div>
-
-            <!-- deployment -->
-            <div id="bb-sub-deployment" class="action-subform" hidden>
-              <div class="field-row">
-                <span class="field-label">Environment</span>
-                <input type="text" id="bb-dep-env" class="field-input" placeholder="staging">
-              </div>
-              <div class="field-row field-row--top">
-                <span class="field-label">Payload</span>
-                <div>
-                  <div class="kv-list" id="bb-dep-payload"></div>
-                  <button class="btn btn-secondary btn-xs" id="bb-dep-payload-add">+ Add Field</button>
-                  <p class="sub-note">Tokens: <code>{branchName}</code> <code>{prTitle}</code> <code>{prNumber}</code> <code>{repo}</code></p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Deploy Buttons -->
+        <!-- PR Actions -->
         <div class="form-section">
           <div class="form-section-header">
-            Deploy Buttons
-            <button class="btn btn-secondary btn-sm" id="add-deploy-btn">+ Add Button</button>
+            Actions on PR
+            <button class="btn btn-secondary btn-sm" id="add-pr-action-btn">+ Add Action</button>
           </div>
-          <div id="deploy-buttons-list" style="padding: 8px 0 4px;"></div>
+          <div id="pr-actions-list" style="padding: 8px 0 4px;"></div>
+          <p class="sub-note" style="padding: 0 14px 10px;">Buttons injected into the PR header. Drag the <code>⠿</code> handle to reorder. Use <code>{branchName}</code>, <code>{prTitle}</code>, <code>{prNumber}</code>, <code>{repo}</code>, or any custom token in action fields. Use <code>{ask:"Label"}</code> to prompt the user for input at click time.</p>
         </div>
 
-        <!-- Extraction -->
+        <!-- Comment Actions -->
         <div class="form-section">
-          <div class="form-section-header">Extraction</div>
-          <div class="form-section-body">
-            <div class="field-row">
-              <span class="field-label">Version regex</span>
-              <input type="text" id="ext-version-regex" class="field-input field-input--mono">
-            </div>
-            <div class="field-row">
-              <span class="field-label">Profile regex</span>
-              <input type="text" id="ext-profile-regex" class="field-input field-input--mono">
-            </div>
-            <div class="field-row">
-              <span class="field-label">Default profile</span>
-              <input type="text" id="ext-default-profile" class="field-input">
-            </div>
-            <div class="field-row field-row--top">
-              <span class="field-label">Skipped profiles</span>
-              <div>
-                <div class="tag-list" id="ext-skipped-list"></div>
-                <button class="btn btn-secondary btn-xs" id="ext-skipped-add">+ Add</button>
-              </div>
-            </div>
+          <div class="form-section-header">
+            Actions on PR Comment
+            <button class="btn btn-secondary btn-sm" id="add-comment-action-btn">+ Add Action</button>
           </div>
+          <div id="comment-actions-list" style="padding: 8px 0 4px;"></div>
+          <p class="sub-note" style="padding: 0 14px 10px;">Buttons shown next to matching links in PR comments. Define tokens to extract from the comment, then use <code>{tokenName}</code> in action fields. Use <code>{ask:"Label"}</code> to prompt for input at click time. Drag the <code>⠿</code> handle to reorder.</p>
         </div>
 
-        <!-- Filters -->
-        <div class="form-section">
-          <div class="form-section-header">Filters</div>
-          <div class="form-section-body">
-            <div class="field-row field-row--top">
-              <span class="field-label">Excluded repos</span>
-              <div>
-                <div class="tag-list" id="excluded-repos-list"></div>
-                <button class="btn btn-secondary btn-xs" id="excluded-repos-add">+ Add</button>
-                <p class="sub-note">Regex patterns — no buttons injected on matching repos.</p>
+        <!-- Additional Settings -->
+        <div class="feedback-section collapsed" id="additional-settings-section">
+          <div class="feedback-section-header">
+            <span class="feedback-chevron">▾</span>
+            Additional Settings
+          </div>
+          <div class="feedback-section-body">
+
+            <!-- Repo Filter -->
+            <div class="form-section collapsible collapsed" id="repo-filter-section">
+              <div class="form-section-header">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span class="form-section-chevron">▾</span>
+                  Repo Filter
+                </div>
+              </div>
+              <div class="form-section-body">
+                <div class="field-row">
+                  <span class="field-label">Mode</span>
+                  <div style="display:flex; flex-direction:column; gap:6px; padding-top:2px;">
+                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="exclude" checked> Exclude repos matching patterns</label>
+                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="include"> Include only repos matching patterns</label>
+                  </div>
+                </div>
+                <div class="field-row field-row--top" style="margin-top:6px;">
+                  <span class="field-label">Patterns</span>
+                  <div>
+                    <div class="tag-list" id="repo-filter-list"></div>
+                    <button class="btn btn-secondary btn-xs" id="repo-filter-add">+ Add</button>
+                    <p class="sub-note">Exact name or regex (e.g. <code>myorg/helm-.*</code>). Repos listed in the Repos tab always bypass this filter regardless of mode.</p>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="field-row field-row--top" style="margin-top: 8px;">
-              <span class="field-label">Author filter</span>
-              <div>
-                <div class="tag-list" id="author-filter-list"></div>
-                <button class="btn btn-secondary btn-xs" id="author-filter-add">+ Add</button>
-                <p class="sub-note">Usernames or regex — deploy buttons appear only on matching authors. Empty = show on all.</p>
+
+            <div class="form-section" style="margin-top: 6px;">
+              <div class="form-section-header">
+                Extraction Patterns
+                <button class="btn btn-secondary btn-sm" id="add-token-preset-btn" hidden>+ Add Pattern</button>
+              </div>
+              <div id="extraction-patterns-hint" style="padding: 10px 14px;">
+                <p class="hint" style="margin:0;">Want to maintain a library of reusable extraction patterns shared across actions? <a href="#" id="show-extraction-patterns-link">Set up Extraction Patterns →</a></p>
+              </div>
+              <div id="extraction-patterns-body" hidden>
+                <div id="token-presets-list" style="padding: 8px 0 4px;"></div>
+                <p class="sub-note" style="padding: 0 14px 10px;">Define reusable extraction templates. Copy from a pattern when adding tokens to an action — copies are independent. Available sources: <code>commentBody</code>, <code>commentAuthor</code>, <code>prTitle</code>, <code>prBranch</code>, <code>prNumber</code>, <code>prAuthor</code>, <code>repo</code>.</p>
               </div>
             </div>
           </div>
@@ -478,19 +538,19 @@
       <!-- Groups tab -->
       <div class="tab-panel" id="tab-groups" hidden>
         <div class="tab-hint">
-          <strong>First matching group wins.</strong> Each entry in <code>Match repos</code> is tested as an exact name, then as a regex. Toggle which settings to override — unselected sections are inherited from global config. Arrays like <code>deployButtons</code> replace entirely; nested objects like <code>extraction</code> merge field-by-field.
+          <strong>First matching group wins.</strong> Each pattern in <code>Match repos</code> is tested as an exact name, then as a regex. Give each group a <strong>name</strong> so you can identify it at a glance. Toggle <strong>Actions</strong> to override — unselected sections inherit from global. Choose <strong>Replace</strong> to fully swap inherited actions, or <strong>Extend</strong> to append yours after them. Enabling an override for the first time auto-fills from the current global config as a starting point. Extraction patterns are global-only.
         </div>
+        <div class="tab-actions"><button class="btn btn-secondary btn-sm" id="add-group-btn">+ Add Group</button></div>
         <div id="groups-list"></div>
-        <button class="btn btn-secondary btn-sm" id="add-group-btn" style="margin-top: 4px;">+ Add Group</button>
       </div>
 
       <!-- Repos tab -->
       <div class="tab-panel" id="tab-repos" hidden>
         <div class="tab-hint">
-          <strong>Exact repo name only</strong> — format <code>owner/repo</code>, no regex. Overrides both global and any matching group. Toggle which settings to override — unselected sections are inherited. A repo listed here is never excluded by <code>excludedRepos</code>.
+          <strong>Exact repo name only</strong> — format <code>owner/repo</code>, no regex. Overrides both global and any matching group. Enabling an override auto-fills from the resolved parent config (global + matching group). A repo listed here is never excluded by <code>repoFilter</code>.
         </div>
+        <div class="tab-actions"><button class="btn btn-secondary btn-sm" id="add-repo-btn">+ Add Repo</button></div>
         <div id="repos-list"></div>
-        <button class="btn btn-secondary btn-sm" id="add-repo-btn" style="margin-top: 4px;">+ Add Repo</button>
       </div>
 
       <!-- Shared actions -->
@@ -498,15 +558,23 @@
         <button class="btn btn-primary"   id="save-config-btn">Save Config</button>
         <button class="btn btn-secondary" id="discard-config-btn">Discard Changes</button>
         <button class="btn btn-danger"    id="reset-config-btn">Reset to Defaults</button>
+        <button class="btn btn-secondary" id="json-config-btn">{ } JSON</button>
       </div>
 
       <p class="status" id="config-status-msg"></p>
     </div>
 
     <hr class="divider" />
-    <p class="footer">Made with ❤️ by Mostly Works Studio</p>
+    <p class="footer">
+      Made with ❤️ by <a href="https://panshul.dev/studio" target="_blank" style="color:#656d76;">Mostly Works Studio</a>
+      &nbsp;·&nbsp;
+      <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank" style="color:#656d76;">⭐ Leave a review</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/Mostly-Works-Studio/lazydeploy" target="_blank" style="color:#656d76;">Contribute on GitHub →</a>
+    </p>
 
   </div>
+  <script src="config-defaults.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

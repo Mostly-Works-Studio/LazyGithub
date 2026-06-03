@@ -1,48 +1,6 @@
+importScripts('config-defaults.js');
+
 const GITHUB_API_BASE = 'https://api.github.com';
-
-const DEFAULT_CONFIG = {
-  excludedRepos:       [],
-  commentAuthorFilter: [],
-  extraction: {
-    versionRegex:    '\\d{12}-(?:PR\\d+-[a-f0-9]+|\\d+)',
-    profileRegex:    'Profile\\s*:\\s*(\\S+)',
-    defaultProfile:  'default',
-    skippedProfiles: ['sdk'],
-  },
-  buildButton: {
-    label:          '🔨 Build',
-    color:          '#c95f0a',
-    hiddenOnStates: ['merged', 'closed'],
-    action: { type: 'comment', comment: '/deploy {branchName}' },
-  },
-  deployButtons: [
-    {
-      label: 'Deploy to Release',
-      color: '#1f883d',
-      workflows: [
-        { if: 'version:contains:PR', file: 'deploy_to_release_hotfix.yaml' },
-        { file: 'deploy_to_release.yaml' },
-      ],
-      inputs: {
-        build_version:       '{version}',
-        additional_comments: '{prTitle}',
-        build_profile:       '{profile}',
-      },
-    },
-    {
-      label: 'Deploy to Prod',
-      color: '#0969da',
-      workflows: [{ file: 'deploy_to_prod.yaml' }],
-      inputs: {
-        build_version:       '{version}',
-        additional_comments: '{prTitle}',
-        build_profile:       '{profile}',
-      },
-    },
-  ],
-};
-
-// ── Storage ──────────────────────────────────────────────────────────────────
 
 function getStoredData() {
   return new Promise(resolve =>
@@ -59,10 +17,10 @@ function getStoredData() {
 
 function buildHeaders(token) {
   return {
-    'Authorization':       `Bearer ${token}`,
-    'Accept':              'application/vnd.github+json',
+    'Authorization':        `Bearer ${token}`,
+    'Accept':               'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
-    'Content-Type':        'application/json',
+    'Content-Type':         'application/json',
   };
 }
 
@@ -105,140 +63,120 @@ function resolveTemplate(template, ctx) {
   return String(template).replace(/\{(\w+)\}/g, (_, key) => ctx[key] ?? '');
 }
 
-// Supported condition syntax: "version:contains:VALUE" | "version:notContains:VALUE"
-// Unknown conditions default to true (fail-open) so unrecognised rules never silently skip.
-function evaluateCondition(condition, version) {
+// Condition syntax: "tokenName:contains:VALUE" | "tokenName:notContains:VALUE"
+// Unknown conditions fail-open so unrecognised rules never silently skip.
+function evaluateCondition(condition, ctx) {
   if (!condition) return true;
   const [subject, op, ...rest] = condition.split(':');
-  const value = rest.join(':');
-  if (subject === 'version') {
-    if (op === 'contains')    return version.includes(value);
-    if (op === 'notContains') return !version.includes(value);
-  }
+  const value        = rest.join(':');
+  const subjectValue = String(ctx[subject] ?? '');
+  if (op === 'contains')    return subjectValue.includes(value);
+  if (op === 'notContains') return !subjectValue.includes(value);
   return true;
 }
 
-function selectWorkflow(version, buttonConfig) {
-  for (const rule of buttonConfig.workflows) {
-    if (evaluateCondition(rule.if, version)) return rule.file;
+// Resolves a value that is either a plain string or a conditional rules array.
+// Each rule is { if?: "tokenName:op:VALUE", value: "string" }; first matching
+// rule wins. Also accepts old {file} key per rule for graceful migration.
+function resolveConditional(value, ctx) {
+  if (!Array.isArray(value)) return resolveTemplate(String(value ?? ''), ctx);
+  for (const rule of value) {
+    if (evaluateCondition(rule.if, ctx)) return resolveTemplate(rule.value ?? rule.file ?? '', ctx);
   }
-  return buttonConfig.workflows.at(-1)?.file ?? '';
+  return '';
 }
 
-// ── Version Extraction ────────────────────────────────────────────────────────
+// ── Generic Token Extraction ──────────────────────────────────────────────────
 
-function extractBuilds(commentBody, extraction) {
-  let versionRe;
-  try   { versionRe = new RegExp(extraction.versionRegex); }
+function getSourceValue(source, prCtx) {
+  switch (source) {
+    case 'commentBody':   return prCtx.commentBody   ?? '';
+    case 'commentAuthor': return prCtx.commentAuthor ?? '';
+    case 'prTitle':       return prCtx.prTitle       ?? '';
+    case 'prBranch':      return prCtx.branchName    ?? '';
+    case 'prNumber':      return String(prCtx.prNumber ?? '');
+    case 'prAuthor':      return prCtx.prAuthor      ?? '';
+    case 'repo':          return prCtx.repo          ?? '';
+    default:              return '';
+  }
+}
+
+// Extracts token rows from the execution context.
+//
+// For commentBody tokens: scans the comment line by line. Each line where the
+// first commentBody token (anchor) matches is one candidate row. All other
+// commentBody tokens are extracted from the same line — they co-vary naturally.
+// Scalar-source tokens are resolved once and shared across all rows.
+//
+// Returns an array of token-value objects (one per matched row, or one for
+// scalar-only cases). An empty array means no rows were found.
+function extractRows(tokens, prCtx) {
+  const commentBodyTokens = tokens.filter(t => t.source === 'commentBody');
+  const scalarTokens      = tokens.filter(t => t.source !== 'commentBody');
+
+  // Resolve scalar tokens once
+  const scalarValues = {};
+  for (const token of scalarTokens) {
+    const raw = getSourceValue(token.source, prCtx);
+    let value;
+    if (token.regex) {
+      try {
+        const m = raw.match(new RegExp(token.regex));
+        value = m?.[1] ?? m?.[0] ?? (token.default ?? '');
+      } catch { value = token.default ?? ''; }
+    } else {
+      value = raw || (token.default ?? '');
+    }
+    scalarValues[token.name] = value;
+  }
+
+  // No commentBody tokens → single row from scalar values only
+  if (commentBodyTokens.length === 0) {
+    return [scalarValues];
+  }
+
+  // Line-by-line scan for commentBody tokens
+  const anchorToken = commentBodyTokens[0];
+  let anchorRe;
+  try { anchorRe = new RegExp(anchorToken.regex); }
   catch { return []; }
 
-  let profileRe = null;
-  try   { if (extraction.profileRegex) profileRe = new RegExp(extraction.profileRegex); }
-  catch { /* ignore invalid profile regex */ }
+  const rows = [];
+  const seen = new Set();
 
-  const skipped        = new Set(extraction.skippedProfiles ?? []);
-  const defaultProfile = extraction.defaultProfile ?? 'default';
-  const builds = [];
-  const seen   = new Set();
+  for (const line of (prCtx.commentBody ?? '').split('\n')) {
+    const anchorMatch = line.match(anchorRe);
+    if (!anchorMatch) continue;
 
-  for (const line of commentBody.split('\n')) {
-    const versionMatch = line.match(versionRe);
-    if (!versionMatch) continue;
+    const anchorValue = anchorMatch[1] ?? anchorMatch[0];
+    if (seen.has(anchorValue)) continue;
 
-    const version = versionMatch[0];
-    if (seen.has(version)) continue;
+    const cleanLine = line.replace(/<[^>]*>/g, '');
+    const row = { ...scalarValues };
+    let skipRow = false;
 
-    const cleanLine    = line.replace(/<[^>]*>/g, '');
-    const profileMatch = profileRe ? cleanLine.match(profileRe) : null;
-    const profile      = profileMatch?.[1] ?? defaultProfile;
+    for (const token of commentBodyTokens) {
+      let value;
+      try {
+        const m = cleanLine.match(new RegExp(token.regex));
+        value = m?.[1] ?? m?.[0] ?? (token.default ?? '');
+      } catch { value = token.default ?? ''; }
 
-    if (skipped.has(profile)) continue;
+      if ((token.skip ?? []).includes(value)) { skipRow = true; break; }
+      row[token.name] = value;
+    }
 
-    seen.add(version);
-    builds.push({ version, profile });
+    if (skipRow) continue;
+    seen.add(anchorValue);
+    rows.push(row);
   }
 
-  return builds;
+  return rows;
 }
 
-// ── Dispatch Workflows ────────────────────────────────────────────────────────
+// ── Unified Action Executor ───────────────────────────────────────────────────
 
-async function handleTrigger(msg, token, config) {
-  const parsed = parseCommentUrl(msg.url);
-  if (!parsed) return { success: false, error: 'Not a valid GitHub comment URL.' };
-
-  const { repo, commentId, prNumber } = parsed;
-  const buttonConfig = msg.buttonConfig;
-
-  const [commentResult, prResult, repoResult] = await Promise.allSettled([
-    githubGet(`/repos/${repo}/issues/comments/${commentId}`, token),
-    prNumber ? githubGet(`/repos/${repo}/pulls/${prNumber}`, token) : Promise.resolve(null),
-    githubGet(`/repos/${repo}`, token),
-  ]);
-
-  if (commentResult.status === 'rejected') {
-    return { success: false, error: 'Could not fetch comment. Check token permissions.' };
-  }
-
-  const commentBody   = commentResult.value.body ?? '';
-  const prTitle       = prResult.status === 'fulfilled' ? prResult.value?.title ?? '' : '';
-  const defaultBranch = repoResult.status === 'fulfilled' ? repoResult.value.default_branch : 'master';
-
-  const builds = extractBuilds(commentBody, config.extraction);
-  if (builds.length === 0) {
-    return { success: false, error: 'No deployable build versions found in this comment.' };
-  }
-
-  const failed = [];
-  for (const build of builds) {
-    const workflow = selectWorkflow(build.version, buttonConfig);
-    const ctx      = { version: build.version, profile: build.profile, prTitle };
-
-    const resolvedInputs = {};
-    for (const [key, val] of Object.entries(buttonConfig.inputs)) {
-      resolvedInputs[key] = resolveTemplate(val, ctx);
-    }
-
-    try {
-      await githubPost(
-        `/repos/${repo}/actions/workflows/${workflow}/dispatches`,
-        { ref: defaultBranch, inputs: resolvedInputs },
-        token
-      );
-    } catch {
-      failed.push(build.version);
-    }
-
-    if (builds.indexOf(build) < builds.length - 1) {
-      await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-
-  return failed.length > 0
-    ? { success: false, error: `Failed to trigger: ${failed.join(', ')}` }
-    : { success: true, count: builds.length };
-}
-
-// ── Build Action ──────────────────────────────────────────────────────────────
-
-async function handleBuild(msg, token) {
-  const [prResult, repoResult] = await Promise.allSettled([
-    githubGet(`/repos/${msg.repo}/pulls/${msg.prNumber}`, token),
-    githubGet(`/repos/${msg.repo}`, token),
-  ]);
-
-  if (prResult.status === 'rejected') throw prResult.reason;
-
-  const pr            = prResult.value;
-  const defaultBranch = repoResult.status === 'fulfilled' ? repoResult.value.default_branch : 'main';
-  const ctx           = {
-    branchName: pr.head.ref,
-    prTitle:    pr.title ?? '',
-    prNumber:   msg.prNumber,
-    repo:       msg.repo,
-  };
-  const action = msg.buildAction;
-
+async function executeAction(action, ctx, repo, defaultBranch, token) {
   function resolveObj(obj) {
     const out = {};
     for (const [k, v] of Object.entries(obj ?? {})) out[k] = resolveTemplate(String(v), ctx);
@@ -247,16 +185,17 @@ async function handleBuild(msg, token) {
 
   if (action.type === 'comment') {
     const comment = await githubPost(
-      `/repos/${msg.repo}/issues/${msg.prNumber}/comments`,
-      { body: resolveTemplate(action.comment ?? '', ctx) },
+      `/repos/${repo}/issues/${ctx.prNumber}/comments`,
+      { body: resolveConditional(action.comment ?? '', ctx) },
       token
     );
     return { success: true, commentUrl: comment.html_url };
   }
 
   if (action.type === 'workflow') {
+    const file = resolveConditional(action.file ?? '', ctx);
     await githubPost(
-      `/repos/${msg.repo}/actions/workflows/${action.file}/dispatches`,
+      `/repos/${repo}/actions/workflows/${file}/dispatches`,
       { ref: defaultBranch, inputs: resolveObj(action.inputs) },
       token
     );
@@ -265,8 +204,8 @@ async function handleBuild(msg, token) {
 
   if (action.type === 'repositoryDispatch') {
     await githubPost(
-      `/repos/${msg.repo}/dispatches`,
-      { event_type: resolveTemplate(action.eventType ?? '', ctx), client_payload: resolveObj(action.payload) },
+      `/repos/${repo}/dispatches`,
+      { event_type: resolveConditional(action.eventType ?? '', ctx), client_payload: resolveObj(action.payload) },
       token
     );
     return { success: true };
@@ -274,10 +213,10 @@ async function handleBuild(msg, token) {
 
   if (action.type === 'deployment') {
     await githubPost(
-      `/repos/${msg.repo}/deployments`,
+      `/repos/${repo}/deployments`,
       {
         ref:               ctx.branchName,
-        environment:       resolveTemplate(action.environment ?? 'production', ctx),
+        environment:       resolveConditional(action.environment ?? 'production', ctx),
         payload:           resolveObj(action.payload),
         auto_merge:        false,
         required_contexts: [],
@@ -288,6 +227,92 @@ async function handleBuild(msg, token) {
   }
 
   throw new Error(`Unknown action type "${action.type}". Use: comment, workflow, repositoryDispatch, deployment.`);
+}
+
+// ── Unified Action Handler ────────────────────────────────────────────────────
+
+async function handleAction(msg, token) {
+  if (msg.trigger === 'comment') {
+    const parsed = parseCommentUrl(msg.url);
+    if (!parsed) return { success: false, error: 'Not a valid GitHub comment URL.' };
+
+    const { repo, commentId, prNumber } = parsed;
+    const tokens     = msg.tokens     ?? [];
+    const onMultiple = msg.onMultiple ?? 'all';
+
+    const [commentResult, prResult, repoResult] = await Promise.allSettled([
+      githubGet(`/repos/${repo}/issues/comments/${commentId}`, token),
+      prNumber ? githubGet(`/repos/${repo}/pulls/${prNumber}`, token) : Promise.resolve(null),
+      githubGet(`/repos/${repo}`, token),
+    ]);
+
+    if (commentResult.status === 'rejected') {
+      return { success: false, error: 'Could not fetch comment. Check token permissions.' };
+    }
+
+    const commentBody   = commentResult.value.body         ?? '';
+    const commentAuthor = commentResult.value.user?.login  ?? '';
+    const pr            = prResult.status === 'fulfilled' ? prResult.value : null;
+    const prTitle       = pr?.title         ?? '';
+    const branchName    = pr?.head?.ref     ?? '';
+    const prAuthor      = pr?.user?.login   ?? '';
+    const defaultBranch = repoResult.status === 'fulfilled' ? repoResult.value.default_branch : 'master';
+
+    const prCtx     = { commentBody, commentAuthor, prTitle, branchName, prNumber, prAuthor, repo };
+    const rows      = extractRows(tokens, prCtx);
+    const activeRows = onMultiple === 'first' ? rows.slice(0, 1) : rows;
+
+    if (activeRows.length === 0) {
+      return { success: false, error: 'No matching tokens found in this comment.' };
+    }
+
+    const failed = [];
+    let lastResult = null;
+    for (let i = 0; i < activeRows.length; i++) {
+      const ctx = { ...prCtx, ...activeRows[i] };
+      try {
+        lastResult = await executeAction(msg.action, ctx, repo, defaultBranch, token);
+      } catch (err) {
+        const rowId = tokens[0] ? String(activeRows[i][tokens[0].name] ?? `row ${i + 1}`) : `row ${i + 1}`;
+        failed.push(rowId);
+      }
+      if (i < activeRows.length - 1) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    return failed.length > 0
+      ? { success: false, error: `Failed to trigger: ${failed.join(', ')}` }
+      : { success: true, count: activeRows.length, ...(lastResult?.commentUrl ? { commentUrl: lastResult.commentUrl } : {}) };
+
+  } else {
+    // prHeader trigger
+    const [prResult, repoResult] = await Promise.allSettled([
+      githubGet(`/repos/${msg.repo}/pulls/${msg.prNumber}`, token),
+      githubGet(`/repos/${msg.repo}`, token),
+    ]);
+
+    if (prResult.status === 'rejected') throw prResult.reason;
+
+    const pr            = prResult.value;
+    const defaultBranch = repoResult.status === 'fulfilled' ? repoResult.value.default_branch : 'main';
+
+    const prCtx = {
+      prTitle:       pr.title       ?? '',
+      branchName:    pr.head.ref,
+      prNumber:      msg.prNumber,
+      prAuthor:      pr.user?.login ?? '',
+      repo:          msg.repo,
+      commentBody:   '',
+      commentAuthor: '',
+    };
+
+    const rows        = extractRows(msg.tokens ?? [], prCtx);
+    const tokenValues = rows[0] ?? {};
+    const ctx         = { ...prCtx, ...tokenValues };
+
+    return executeAction(msg.action, ctx, msg.repo, defaultBranch, token);
+  }
 }
 
 // ── Message Router ────────────────────────────────────────────────────────────
@@ -307,19 +332,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     chrome.tabs.create({ url: chrome.runtime.getURL('options.html') + '?reason=no-token' });
     return;
   }
-  if (msg.type !== 'trigger' && msg.type !== 'build') return;
+  if (msg.type !== 'action') return;
 
   (async () => {
-    const { token, config } = await getStoredData();
+    const { token } = await getStoredData();
     if (!token) {
       sendResponse({ success: false, error: 'No GitHub token configured. Open extension options to add one.' });
       return;
     }
 
     try {
-      const result = msg.type === 'build'
-        ? await handleBuild(msg, token)
-        : await handleTrigger(msg, token, config);
+      const result = await handleAction(msg, token);
       sendResponse(result);
     } catch (err) {
       sendResponse({ success: false, error: err.message });

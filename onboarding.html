@@ -191,9 +191,72 @@
     }
     .done-text h3 { font-size: 14px; font-weight: 600; color: #1a7f37; margin-bottom: 3px; }
     .done-text p  { font-size: 13px; color: #1f6a30; line-height: 1.5; }
+    .done-links { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .done-links a { font-size: 12px; color: #0969da; text-decoration: none; }
+    .done-links a:hover { text-decoration: underline; }
+    .done-links-sep { font-size: 12px; color: #656d76; }
 
     /* ── Footer ── */
     .footer { text-align: center; font-size: 12px; color: #656d76; margin-top: 32px; }
+
+    /* ── Step 3 action buttons ── */
+    .ob-step3-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    /* ── Paste-config modal ── */
+    .ob-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .ob-modal-overlay.visible { display: flex; }
+    .ob-modal {
+      background: white;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      width: clamp(340px, 60vw, 680px);
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .ob-modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #d0d7de;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .ob-modal textarea {
+      flex: 1;
+      resize: none;
+      padding: 14px;
+      font-family: monospace;
+      font-size: 12px;
+      border: none;
+      border-bottom: 1px solid #d0d7de;
+      outline: none;
+      min-height: 260px;
+    }
+    .ob-modal-status {
+      padding: 6px 16px;
+      font-size: 12px;
+      min-height: 28px;
+      line-height: 1.6;
+    }
+    .ob-modal-status.error   { color: #cf222e; }
+    .ob-modal-status.success { color: #1a7f37; }
+    .ob-modal-actions {
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
 
     /* ── Inline token input (step 2) ── */
     .ob-input-row {
@@ -247,10 +310,16 @@
             workflow runs. It needs a token to do this on your behalf.
           </p>
           <div class="scopes">
+            <p style="font-size:12px;font-weight:600;margin-bottom:6px;color:#1f2328;">Required scopes</p>
             <ul>
-              <li><code>repo</code> — read PR details and post build trigger comments</li>
+              <li><code>repo</code> — read PR details, post comments, create deployments, and trigger repository dispatch events</li>
               <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
             </ul>
+            <p style="font-size:11px;color:#656d76;margin-top:8px;line-height:1.5;">
+              <strong>Note:</strong> If your organisation enforces SAML SSO, you must also
+              <a href="https://docs.github.com/en/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on" target="_blank" style="color:#0969da;">authorise this token for SSO</a>
+              after creating it, otherwise API calls to that org will be rejected.
+            </p>
           </div>
           <button class="btn btn-primary" id="create-token-btn">
             Create Token on GitHub →
@@ -271,10 +340,6 @@
             <button class="btn btn-primary" id="ob-save-btn">Save</button>
           </div>
           <p id="ob-token-status" class="ob-token-status"></p>
-          <p class="step-desc">
-            Want to configure workflows or button labels too?
-            <button class="btn btn-secondary" id="ob-settings-btn" style="padding: 3px 10px; font-size: 12px; margin-left: 4px;">Open full settings →</button>
-          </p>
         </div>
       </div>
 
@@ -282,21 +347,15 @@
       <div class="step step--pending" id="step-3">
         <div class="step-num"><span>3</span></div>
         <div class="step-body">
-          <div class="step-title">Open any GitHub Pull Request</div>
+          <div class="step-title">Set up your configuration</div>
           <p class="step-desc">
-            LazyDeploy scans PR comment threads for version strings and injects buttons automatically.
-            Here's what you'll see:
+            Configure which repos get buttons, what actions they trigger, and how they're labelled.
+            You can always tweak this later from the extension settings.
           </p>
-          <div class="btn-preview">
-            <span class="preview-btn" style="background:#c95f0a;">🔨 Build</span>
-            <span class="preview-btn" style="background:#1f883d;">Deploy to Release</span>
-            <span class="preview-btn" style="background:#0969da;">Deploy to Prod</span>
+          <div class="ob-step3-actions">
+            <button class="btn btn-primary" id="ob-configure-btn">Configure from scratch →</button>
+            <button class="btn btn-secondary" id="ob-paste-btn">Have a config? Paste it here</button>
           </div>
-          <p class="step-desc" style="margin-bottom:0;">
-            The <strong>Build</strong> button appears in the PR header. <strong>Deploy</strong> buttons
-            appear next to version strings in CI comments — hover a version link to reveal them.
-            Workflow files, inputs, and button labels are all configurable.
-          </p>
         </div>
       </div>
 
@@ -307,13 +366,37 @@
     <div class="done-banner" id="done-banner">
       <div class="done-icon">✓</div>
       <div class="done-text">
-        <h3>You're all set!</h3>
-        <p>LazyDeploy is active on all GitHub PR pages. Head over to a PR to try it out.</p>
-      </div>
+          <h3>You're all set!</h3>
+          <p>LazyDeploy is active. Open any configured repo's PR to see your buttons in action.</p>
+          <div class="done-links">
+            <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank">⭐ Leave a review on the Chrome Web Store</a>
+            <span class="done-links-sep">·</span>
+            <a href="https://github.com/Mostly-Works-Studio/lazydeploy" target="_blank">Contribute on GitHub →</a>
+          </div>
+        </div>
     </div>
 
-    <p class="footer">Made with ❤️ by Mostly Works Studio</p>
+    <p class="footer">
+      Made with ❤️ by <a href="https://panshul.dev/studio" target="_blank" style="color:#656d76;">Mostly Works Studio</a>
+      &nbsp;·&nbsp;
+      <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank" style="color:#656d76;">Chrome Web Store</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/Mostly-Works-Studio/lazydeploy" target="_blank" style="color:#656d76;">GitHub</a>
+    </p>
 
+  </div>
+
+  <!-- Paste-config modal -->
+  <div class="ob-modal-overlay" id="ob-paste-overlay">
+    <div class="ob-modal">
+      <div class="ob-modal-header">Paste your team's config</div>
+      <textarea id="ob-paste-textarea" placeholder="Paste JSON config here…" spellcheck="false"></textarea>
+      <div id="ob-paste-status" class="ob-modal-status"></div>
+      <div class="ob-modal-actions">
+        <button class="btn btn-secondary" id="ob-paste-cancel">Cancel</button>
+        <button class="btn btn-success" id="ob-paste-apply">Validate &amp; Save</button>
+      </div>
+    </div>
   </div>
 
   <script src="onboarding.js"></script>

@@ -1,23 +1,29 @@
 # LazyDeploy
 
-**Trigger build and deployment workflows directly from GitHub PR comments — no tab switching, no copy-pasting.**
+**Trigger build and deployment workflows directly from GitHub PR pages — no tab switching, no copy-pasting.**
 
-LazyDeploy is a Chrome extension that injects **Build** and **Deploy** buttons next to version strings in GitHub PR comment threads. It reads the version, branch, and deployment profile from the comment and dispatches the appropriate GitHub Actions workflow with a single click.
+LazyDeploy is a Chrome extension that injects action buttons into GitHub pull request pages. Buttons in the PR header trigger per-PR workflows (builds, validations). Buttons next to version strings in PR comments trigger deployment workflows using data extracted directly from the comment.
 
 ---
 
 ## Features
 
-- **One-click builds** — triggers a build via PR comment, workflow dispatch, repository dispatch, or GitHub deployment — configurable per repo
-- **One-click deploys** — dispatches a GitHub Actions workflow with pre-filled inputs extracted from the PR comment
-- **Hover-to-reveal deploy buttons** — deploy buttons stay hidden until you hover over a version link, keeping the UI clean; they auto-hide after 5 seconds of no interaction
-- **Smart workflow routing** — conditional rules pick the right workflow file based on the version string (e.g. hotfix vs. regular release)
-- **PR state gating** — hides the Build button on merged or closed PRs
-- **Repo exclusion** — skip injecting buttons on repos matching a pattern (e.g. Helm value repos)
-- **Author filtering** — show deploy buttons only on comments from specific users or bots (e.g. your CI user)
-- **Live feedback** — success and error toasts appear bottom-right; buttons show inline loading, success, and failure states
-- **Layered per-repo config** — global defaults, group overrides (regex or repo list), and repo-specific overrides; highest specificity wins
-- **Tabbed config editor** — settings split into Global, Groups, and Repos tabs; template buttons scaffold new entries; Discard Changes rolls back unsaved edits without touching the saved state
+- **One-click PR actions** — buttons in the PR header trigger any action (comment, workflow dispatch, repository dispatch, or deployment); multiple buttons per repo supported
+- **One-click comment actions** — buttons appear next to matching strings in PR comments; dispatch actions using tokens extracted from the comment line
+- **Hover-to-reveal comment buttons** — hidden until you hover a version link, auto-hide after 5 seconds of inactivity
+- **Conditional values** — any primary string field (`comment`, `file`, `eventType`, `environment`) can route to different values based on token content
+- **User input prompts** — use `{ask:"Label"}` in any field to pop up an input dialog at click time, letting users fill in values before dispatch
+- **Customisable button feedback** — configure what the button shows and which toast fires for pending, success, and failure states
+- **After-success redirect** — optionally navigate to the posted comment, the Actions tab, or the Deployments tab on success
+- **PR state gating** — hide buttons on merged or closed PRs
+- **Repo filter** — exclude or include repos by exact name or regex
+- **Author filtering** — show comment action buttons only on comments from specific users or bots
+- **Drag-to-reorder** — reorder actions, groups, and conditional rules by dragging the grip handle
+- **Duplicate** — copy any action, group, or repo config with one click; the copy gets a "Copy" suffix
+- **Layered per-repo config** — global defaults, named group overrides (regex or exact match), and per-repo overrides; highest specificity wins
+- **Replace or extend inherited actions** — group and repo overrides can fully replace inherited actions or append to them
+- **Form-based config editor** — collapsible sections, tabs for Global / Groups / Repos, Save / Discard / Reset buttons
+- **JSON export & import** — share your full config as JSON with teammates; paste theirs to load it into the form instantly
 
 ---
 
@@ -29,15 +35,17 @@ LazyDeploy is a Chrome extension that injects **Build** and **Deploy** buttons n
 2. Open Chrome and go to `chrome://extensions`
 3. Enable **Developer mode** (top-right toggle)
 4. Click **Load unpacked** and select the repository folder
-5. A setup page opens automatically — paste your GitHub Personal Access Token directly on the setup page. LazyDeploy validates it against the GitHub API instantly before saving.
+5. A setup page opens automatically — paste your GitHub Personal Access Token. LazyDeploy validates it against the GitHub API before saving.
 
-> If you ever need to revisit settings, click the LazyDeploy icon in the toolbar.
+> To revisit settings later, click the LazyDeploy icon in the toolbar.
 
 ---
 
 ## Configuration
 
-On first install, the onboarding page handles token setup inline — no separate settings tab needed. For subsequent token updates or workflow configuration, open the **Options page** (click the toolbar icon).
+The settings page splits configuration into three tabs. Click **Save Config** to persist all tabs at once. **Discard Changes** reverts to the last saved state. **Reset to Defaults** restores the factory config. **{ } JSON** opens a modal to copy your config as JSON or paste one to import.
+
+Sections and action cards are collapsed by default — click a header to expand it.
 
 ### GitHub Token
 
@@ -45,93 +53,123 @@ Generate a token at [github.com/settings/tokens](https://github.com/settings/tok
 
 | Scope | Purpose |
 |---|---|
-| `repo` | Read PR details and post comments |
+| `repo` | Read PR details, post comments, create deployments, and trigger repository dispatch events |
 | `workflow` | Dispatch GitHub Actions workflows |
 
-Paste the token on the onboarding page or the settings page. Both validate it against the GitHub API instantly — showing `✓ Authenticated as @username` on success or a specific error (invalid token, missing scopes) before you hit Save. Tokens shorter than 20 characters are rejected outright.
+> **Note:** If your org enforces SAML SSO, you must also [authorise the token for SSO](https://docs.github.com/en/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on) after creating it, otherwise API calls to that org will be rejected.
 
-### Extension Config
+---
 
-The settings page splits configuration into three focused tabs. Click **Save Config** to write all at once. **Discard Changes** reverts all tabs to the last saved state without touching storage. **Reset to Defaults** restores the full factory config.
+### Global tab
 
-#### Global tab
-
-Applies to all repos unless overridden by a group or repo-specific entry. All keys here — including `buildButton` — can be overridden at the group or repo level.
+Applies to all repos unless overridden by a group or repo entry.
 
 ```jsonc
 {
-  // Repos matching any of these regex patterns will not get buttons injected.
-  "excludedRepos": [],
+  // Controls which repos get buttons injected at all.
+  "repoFilter": { "mode": "exclude", "patterns": [] },
 
-  // Only show deploy buttons on comments authored by these users/patterns.
-  // Supports regex. Set to [] to show buttons on all comments.
-  "commentAuthorFilter": [],
+  // Named token templates. Actions copy from these as starting points — copies are independent.
+  // id: the {placeholder} name used in action inputs.
+  // source: commentBody | commentAuthor | prTitle | prBranch | prNumber | prAuthor | repo
+  // regex: optional — capture group 1 is the value; if absent, the full source is used.
+  // default: fallback if no match. skip: discard the row if the extracted value is in this list.
+  "tokenPresets": [],
 
-  // Regex patterns used to extract version and profile from comment text.
-  "extraction": {
-    "versionRegex": "\\d{12}-(?:PR\\d+-[a-f0-9]+|\\d+)",
-    "profileRegex": "Profile\\s*:\\s*(\\S+)",
-    "defaultProfile": "default",
-    "skippedProfiles": ["sdk"]
-  },
-
-  // Build button appearance, visibility, and the action it triggers on click.
-  "buildButton": {
-    "label": "🔨 Build",
-    "color": "#c95f0a",
-    "hiddenOnStates": ["merged", "closed"],
-    "action": { "type": "comment", "comment": "/deploy {branchName}" }
-  },
-
-  // One entry per deploy button injected next to each version string.
-  "deployButtons": [
+  // Buttons in the PR header. Each runs independently.
+  "prActions": [
     {
-      "label": "Deploy to Release",
-      "color": "#1f883d",
-      "workflows": [
-        { "if": "version:contains:PR", "file": "deploy_to_release_hotfix.yaml" },
-        { "file": "deploy_to_release.yaml" }
-      ],
-      "inputs": {
-        "build_version": "{version}",
-        "additional_comments": "{prTitle}",
-        "build_profile": "{profile}"
+      "label": "Build",
+      "color": "#c95f0a",
+      "hiddenOnStates": [],   // e.g. ["merged", "closed"]
+      "tokens": [],
+      "action": { "type": "comment", "comment": "/build {branchName}" },
+
+      // Optional: customise what the button shows at each stage.
+      "feedback": {
+        "pending": "⏳ Building…",
+        "success": {
+          "label": "✓ Done",
+          "toast": "",           // empty = no toast
+          "redirect": "none"     // none | comment | workflow_runs | deployments
+        },
+        "failure": { "label": "✗ Failed", "toast": "{error}" }
       }
-    },
+    }
+  ],
+
+  // Buttons next to matching strings in PR comments.
+  // onMultiple: "all" — trigger once per extracted row; "first" — trigger for the first row only.
+  // authorFilter: show only on comments from matching usernames or regexes; empty = all authors.
+  "commentActions": [
     {
-      "label": "Deploy to Prod",
-      "color": "#0969da",
-      "workflows": [{ "file": "deploy_to_prod.yaml" }],
-      "inputs": {
-        "build_version": "{version}",
-        "additional_comments": "{prTitle}",
-        "build_profile": "{profile}"
+      "label": "Deploy",
+      "color": "#1f883d",
+      "authorFilter": [],
+      "tokens": [
+        {
+          "name": "version",
+          "source": "commentBody",
+          "regex": "\\d{12}-(?:PR\\d+-[a-f0-9]+|\\d+)",
+          "default": "",
+          "skip": []
+        }
+      ],
+      "onMultiple": "all",
+      "action": {
+        "type": "workflow",
+        "file": [
+          { "if": "version:contains:PR", "value": "deploy_hotfix.yaml" },
+          { "value": "deploy_release.yaml" }
+        ],
+        "inputs": { "build_version": "{version}", "env": "{ask:\"Target environment\"}" }
+      },
+      "feedback": {
+        "pending": "Running…",
+        "success": { "label": "✓ {count} triggered", "toast": "{count} dispatch(es) triggered.", "redirect": "workflow_runs" },
+        "failure": { "label": "✗ Failed", "toast": "{error}" }
       }
     }
   ]
 }
 ```
 
-#### Groups tab
+---
 
-A JSON array. Each entry applies to a set of repos matched by exact name or regex — first matching group wins. Only specify the keys that differ from global; everything else inherits. Arrays like `deployButtons` replace entirely; nested objects like `extraction` merge field-by-field.
+### Groups tab
 
-Click **+ Add Group** to insert a pre-filled template.
+A list of named groups. Each group applies to repos matched by exact name or regex — **first matching group wins**. Toggle which sections to override; unselected sections inherit from global.
+
+Each group card has a **name** field for your own reference, a **Match repos** tag list (exact or regex), and optional PR / comment action overrides.
+
+Each action override section has a **Replace / Extend** mode:
+- **Replace** — the override actions completely replace the inherited ones
+- **Extend** — the override actions are appended *after* the inherited ones; only configure the extras
+
+When you enable an override for the first time, the form auto-fills from the resolved parent config as a starting point. A **↑ Copy from parent** button is always available to reset.
 
 ```jsonc
 [
   {
+    "name": "JS services",
     "repos": ["myorg/js-service", "myorg/frontend-.*"],
     "config": {
-      "buildButton": {
-        "action": { "type": "comment", "comment": "/js-deploy {branchName}" }
-      },
-      "deployButtons": [
+      "prActions": [
+        {
+          "label": "JS Build",
+          "color": "#8250df",
+          "action": { "type": "comment", "comment": "/js-build {branchName}" }
+        }
+      ],
+      // prActionsMode omitted = "replace" (default)
+      "commentActionsMode": "extend",
+      "commentActions": [
         {
           "label": "Deploy JS",
           "color": "#8250df",
-          "workflows": [{ "file": "deploy_js.yaml" }],
-          "inputs": { "build_version": "{version}" }
+          "tokens": [{ "name": "version", "source": "commentBody", "regex": "\\d+\\.\\d+\\.\\d+", "default": "", "skip": [] }],
+          "onMultiple": "all",
+          "action": { "type": "workflow", "file": "deploy_js.yaml", "inputs": { "version": "{version}" } }
         }
       ]
     }
@@ -139,59 +177,82 @@ Click **+ Add Group** to insert a pre-filled template.
 ]
 ```
 
-#### Repos tab
+---
 
-A JSON object keyed by exact repo name (`owner/repo`, no regex). Overrides both global and any matching group config. A repo listed here is never excluded by `excludedRepos`, even if it matches a pattern there.
+### Repos tab
 
-Click **+ Add Repo** to insert a pre-filled template.
+Per-repo overrides using the exact `owner/repo` name (no regex). Overrides both global and any matching group. A repo listed here always bypasses `repoFilter`.
 
 ```jsonc
 {
-  "myorg/special-repo": {
-    "deployButtons": [
+  "myorg/infra-repo": {
+    "prActions": [
       {
-        "label": "Ship It",
-        "color": "#cf222e",
-        "workflows": [{ "file": "ship.yaml" }],
-        "inputs": { "build_version": "{version}" }
+        "label": "✓ Validate",
+        "color": "#0969da",
+        "action": { "type": "workflow", "file": "validate.yaml", "inputs": { "branch": "{branchName}" } }
       }
-    ]
+    ],
+    "commentActions": []
   }
 }
 ```
 
+---
+
 ### Template Tokens
 
-These placeholders are resolved at dispatch time and can be used in `inputs`, `payload`, and string fields of `buildButton.action`:
+Placeholders resolved at dispatch time. Use `{name}` anywhere in action string fields.
+
+**Fixed tokens** (always available):
+
+| Token | Resolved value | Available in |
+|---|---|---|
+| `{prTitle}` | Title of the pull request | both |
+| `{branchName}` | Source branch | both |
+| `{prNumber}` | PR number | both |
+| `{repo}` | Repository (`owner/repo`) | both |
+| `{commentAuthor}` | GitHub login of the comment author | `commentActions` |
+
+**Custom tokens** — any name defined in the action's `tokens` array is available as `{tokenName}`.
+
+**Feedback tokens** (in `feedback` label/toast fields only):
 
 | Token | Resolved value |
 |---|---|
-| `{version}` | Version string extracted from the comment |
-| `{profile}` | Deployment profile extracted from the comment |
-| `{prTitle}` | Title of the current pull request |
-| `{branchName}` | Source branch of the current pull request |
-| `{prNumber}` | PR number — available in `buildButton.action` fields only |
-| `{repo}` | Repository in `owner/repo` format — available in `buildButton.action` fields only |
+| `{error}` | API error message on failure |
+| `{count}` | Number of rows triggered (comment actions only) |
 
-### Build Action Types
+**User input prompts** — use `{ask:"Label text"}` in any value field to show an input dialog when the button is clicked:
 
-`buildButton.action` supports four types. Each demands only the metadata it needs.
+```jsonc
+"comment": "/deploy {branchName} --tag {ask:\"Release tag\"}",
+"inputs": { "version": "{ask:\"Build version\"}", "env": "{ask:\"Environment\"}" }
+```
 
-**`comment`** — posts a comment to the PR. Triggers bots or webhooks listening for slash commands.
+The dialog collects all prompts at once before dispatch. Cancelling aborts the action. The same label reused in multiple fields is asked only once.
+
+---
+
+### Action Types
+
+All four action types are available in both `prActions` and `commentActions`. Every primary string field supports plain strings or conditional arrays — see [Conditional Values](#conditional-values).
+
+**`comment`** — posts a comment to the PR thread.
 ```jsonc
 "action": { "type": "comment", "comment": "/deploy {branchName}" }
 ```
 
-**`workflow`** — dispatches a specific GitHub Actions workflow via `workflow_dispatch`.
+**`workflow`** — dispatches a GitHub Actions workflow.
 ```jsonc
 "action": {
   "type": "workflow",
-  "file": "build.yaml",
-  "inputs": { "branch": "{branchName}", "pr_title": "{prTitle}" }
+  "file": "deploy.yaml",
+  "inputs": { "branch": "{branchName}", "env": "{ask:\"Target environment\"}" }
 }
 ```
 
-**`repositoryDispatch`** — broadcasts a named custom event. Any workflow with `on: repository_dispatch` can react, making it more decoupled than `workflow`.
+**`repositoryDispatch`** — broadcasts a custom event. Any workflow with `on: repository_dispatch` can react.
 ```jsonc
 "action": {
   "type": "repositoryDispatch",
@@ -200,7 +261,7 @@ These placeholders are resolved at dispatch time and can be used in `inputs`, `p
 }
 ```
 
-**`deployment`** — creates a GitHub deployment against the PR branch. Triggers the deployment event pipeline for teams using GitHub Environments.
+**`deployment`** — creates a GitHub deployment against the PR branch.
 ```jsonc
 "action": {
   "type": "deployment",
@@ -209,9 +270,68 @@ These placeholders are resolved at dispatch time and can be used in `inputs`, `p
 }
 ```
 
-### Layered Configuration
+---
 
-Config is resolved in three layers — each layer overrides only the keys it specifies, leaving the rest inherited from the layer below:
+### Conditional Values
+
+Any primary string field — `comment`, `file`, `eventType`, `environment` — can be set to an array of conditional rules instead of a plain string. Rules are evaluated in order; the first matching one wins. A rule without `if` is an unconditional fallback.
+
+```jsonc
+"file": [
+  { "if": "version:contains:PR", "value": "deploy_hotfix.yaml" },
+  { "value": "deploy_release.yaml" }
+]
+```
+
+**Condition operators** (`tokenName` is any token defined in the action's `tokens` array):
+- `"tokenName:contains:VALUE"` — matches if the token's value contains `VALUE`
+- `"tokenName:notContains:VALUE"` — matches if the token's value does not contain `VALUE`
+
+**Works for all action types:**
+```jsonc
+// Route workflow file based on version type:
+"file": [{ "if": "version:contains:PR", "value": "hotfix.yaml" }, { "value": "release.yaml" }]
+
+// Post different comment text:
+"comment": [{ "if": "env:contains:prod", "value": "/deploy-prod {version}" }, { "value": "/deploy {version}" }]
+
+// Pick event type conditionally:
+"eventType": [{ "if": "profile:contains:sdk", "value": "build-sdk" }, { "value": "build-app" }]
+```
+
+---
+
+### Button Feedback
+
+Each action can override what the button shows and which toast fires at each stage. All fields are optional — omit any to use the default.
+
+```jsonc
+"feedback": {
+  "pending": "⏳ Deploying…",
+  "success": {
+    "label": "✓ Shipped!",
+    "toast": "Triggered {count} deployment(s).",
+    "redirect": "workflow_runs"
+  },
+  "failure": {
+    "label": "✗ Oops",
+    "toast": "Deploy failed: {error}"
+  }
+}
+```
+
+**`redirect`** options for `feedback.success`:
+
+| Value | Behaviour |
+|---|---|
+| `none` (default) | Stay on page |
+| `comment` | Scroll to / navigate to the posted comment |
+| `workflow_runs` | Navigate to `/{repo}/actions` |
+| `deployments` | Navigate to `/{repo}/deployments` |
+
+---
+
+### Layered Configuration
 
 ```
 Repo-specific  (repos["owner/repo"])   ← highest priority
@@ -222,60 +342,26 @@ Global config                          ← lowest priority / fallback
 ```
 
 **Merge rules**
-- Nested objects (`extraction`, `buildButton`) are merged field-by-field — you only need to specify what changes
-- Arrays (`deployButtons`, `excludedRepos`, `hiddenOnStates`) replace the inherited value entirely
+- Nested objects merge field-by-field
+- `prActions` and `commentActions` arrays **replace** the inherited value by default; set `prActionsMode: "extend"` or `commentActionsMode: "extend"` on a group/repo config to append instead
+- `repoFilter` and `tokenPresets` are global-only
 
-**Group matching** — each entry in `group.repos` is tested as an exact string first, then as a regex. The first group whose `repos` list matches the current repo wins.
+**Group matching** — each pattern in `group.repos` is tested as an exact string, then as a regex. The first matching group wins.
 
-**Exclusion bypass** — if a repo has an entry in `repos`, it is never excluded by `excludedRepos`, even if it matches a pattern there.
-
-**Example: 80% Java repos use global config, 10% JS repos use a group, one repo uses its own config**
-
-```jsonc
-{
-  // Global — applies to all Java repos by default
-  "deployButtons": [{ "label": "Deploy Java", ... }],
-
-  "groups": [
-    {
-      // Matches any repo whose name starts with "js-" or "frontend-"
-      "repos": ["myorg/js-.*", "myorg/frontend-.*"],
-      "config": {
-        "deployButtons": [{ "label": "Deploy JS", ... }]
-      }
-    }
-  ],
-
-  "repos": {
-    // This one repo gets its own button, ignoring both global and group
-    "myorg/payments-service": {
-      "deployButtons": [{ "label": "Ship Payments", ... }]
-    }
-  }
-}
-```
-
-### Workflow Conditions
-
-The `if` field on a workflow entry supports two operators:
-
-- `"version:contains:VALUE"` — matches if the version string contains `VALUE`
-- `"version:notContains:VALUE"` — matches if the version string does not contain `VALUE`
-
-The first matching rule in the array is used. A rule without an `if` field is an unconditional fallback.
+**Exclusion bypass** — repos listed in `repos` always bypass `repoFilter`.
 
 ---
 
 ## How It Works
 
-1. **Content script** (`content.js`) runs on every `github.com` page and uses a `MutationObserver` to watch for PR comment threads as they load
-2. For each comment link that contains a version string (matched by `issuecomment-` anchor), it checks the author filter and extracts the version and profile using the configured regex patterns
-3. Matching version links get **Deploy** buttons injected inline — hidden by default, revealed on hover with a 500 ms delay, and auto-hidden after 5 seconds of no interaction
-4. A **Build** button is injected into the PR header (and sticky header); it is hidden on merged or closed PRs
-5. Clicking a Deploy button dispatches a `workflow_dispatch` event to the GitHub API via the background service worker; clicking Build executes the configured action (comment, workflow dispatch, repository dispatch, or deployment) and scrolls to the new comment if one was posted
-6. All actions show inline loading → success/failure states and a toast notification in the bottom-right corner
-7. If no GitHub token is configured, hovering any button shows ⚠️ Token required and clicking opens the settings page
-8. Config and token are stored in `chrome.storage.sync` and hot-reloaded without a page refresh
+1. **Content script** (`content.js`) runs on every `github.com` page and uses a `MutationObserver` to watch for PR pages and comment threads
+2. PR action buttons are injected into the PR header (and sticky header); each hides itself for configured states
+3. Comment action buttons are injected inline next to matching links — hidden until hover, auto-hidden after 5 seconds
+4. On click: if the action has `{ask:"..."}` tokens, an input dialog is shown first. Once confirmed, the action is dispatched to the background service worker
+5. The background service worker (`background.js`) calls the GitHub API, resolves config layering, and returns success or error
+6. The button updates to the configured feedback state; a toast appears bottom-right
+7. If a `redirect` is configured, the page navigates after a short delay
+8. Config and token live in `chrome.storage.sync` and hot-reload without a page refresh
 
 ---
 
@@ -284,9 +370,9 @@ The first matching rule in the array is used. A rule without an `if` field is an
 | Permission | Why |
 |---|---|
 | `storage` | Save your GitHub token and config |
-| `host_permissions: https://api.github.com/*` | Validate your token on paste, dispatch workflows, post comments, and trigger build actions |
+| `host_permissions: https://api.github.com/*` | Validate token, dispatch workflows, post comments, create deployments |
 
-No other permissions are requested. The extension does not phone home, collect analytics, or read any data beyond what is visible in the current PR page.
+No analytics, no phone-home, no data read beyond what is visible on the current PR page.
 
 ---
 
@@ -297,7 +383,7 @@ git clone https://github.com/Mostly-Works-Studio/lazydeploy.git
 cd lazydeploy
 ```
 
-Load the folder as an unpacked extension in Chrome (`chrome://extensions` → Developer mode → Load unpacked).
+Load the folder as an unpacked extension (`chrome://extensions` → Developer mode → Load unpacked).
 
 There is no build step — the extension is plain JavaScript.
 
@@ -305,13 +391,14 @@ There is no build step — the extension is plain JavaScript.
 
 | File | Purpose |
 |---|---|
+| `config-defaults.js` | Single source of truth for `DEFAULT_CONFIG` — loaded by all three JS contexts |
 | `manifest.json` | Chrome extension manifest (MV3) |
-| `content.js` | Injected into GitHub pages — scans comments, resolves layered config, and injects buttons |
-| `background.js` | Service worker — handles GitHub API calls and opens the options page |
-| `options.html` | Settings page UI — tabbed config editor (Global, Groups, Repos) |
-| `options.js` | Settings page logic — tab switching, template insertion, validation, save/discard/reset |
-| `onboarding.html` | First-run onboarding page — guides token creation and inline token entry |
-| `onboarding.js` | Onboarding logic — step progression, inline token validation, and save |
+| `content.js` | Injected into GitHub pages — scans PR pages, resolves config, injects buttons, handles `{ask:"..."}` prompts |
+| `background.js` | Service worker — GitHub API calls, config layering, action executor for all four action types |
+| `options.html` | Settings page UI — tabbed editor (Global, Groups, Repos), JSON modal |
+| `options.js` | Settings page logic — card builders, drag-sort, validation, save/discard/reset/JSON |
+| `onboarding.html` | First-run onboarding page |
+| `onboarding.js` | Onboarding logic — step progression and inline token validation |
 | `icon*.png` | Extension icons at 16, 32, 48, 128, 256, 512 px |
 
 ---
@@ -325,6 +412,8 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 3. Commit your changes
 4. Open a pull request
 
+If LazyDeploy is saving you time, a [review on the Chrome Web Store](https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol) goes a long way. ⭐
+
 ---
 
 ## License
@@ -333,4 +422,4 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ---
 
-Made with ❤️ by [Mostly Works Studio](https://github.com/Mostly-Works-Studio)
+Made with ❤️ by [Mostly Works Studio](https://panshul.dev/studio)

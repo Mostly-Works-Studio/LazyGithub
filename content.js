@@ -1,57 +1,208 @@
-// ── Default Config (mirrors background.js DEFAULT_CONFIG) ────────────────────
-
-const DEFAULT_CONFIG = {
-  excludedRepos:       [],
-  commentAuthorFilter: [],
-  extraction: {
-    versionRegex:    '\\d{12}-(?:PR\\d+-[a-f0-9]+|\\d+)',
-    profileRegex:    'Profile\\s*:\\s*(\\S+)',
-    defaultProfile:  'default',
-    skippedProfiles: ['sdk'],
-  },
-  buildButton: {
-    label:          '🔨 Build',
-    color:          '#c95f0a',
-    hiddenOnStates: ['merged', 'closed'],
-    action: { type: 'comment', comment: '/deploy {branchName}' },
-  },
-  groups: [],
-  repos: {},
-  deployButtons: [
-    {
-      label: 'Deploy to Release',
-      color: '#1f883d',
-      workflows: [
-        { if: 'version:contains:PR', file: 'deploy_to_release_hotfix.yaml' },
-        { file: 'deploy_to_release.yaml' },
-      ],
-      inputs: {
-        build_version:       '{version}',
-        additional_comments: '{prTitle}',
-        build_profile:       '{profile}',
-      },
-    },
-    {
-      label: 'Deploy to Prod',
-      color: '#0969da',
-      workflows: [{ file: 'deploy_to_prod.yaml' }],
-      inputs: {
-        build_version:       '{version}',
-        additional_comments: '{prTitle}',
-        build_profile:       '{profile}',
-      },
-    },
-  ],
-};
-
 let GLOBAL_CONFIG = DEFAULT_CONFIG;
 let CONFIG = DEFAULT_CONFIG;
+
+// ── Button Feedback Helpers ───────────────────────────────────────────────────
+
+const PR_FB_DEFAULTS = {
+  pending:      '⏳ Starting…',
+  successLabel: '✓ Done',
+  successToast: '',
+  failureLabel: '✗ Failed',
+  failureToast: '{error}',
+};
+
+const CA_FB_DEFAULTS = {
+  pending:      'Running…',
+  successLabel: '✓ {count} triggered',
+  successToast: '{count} action(s) triggered successfully.',
+  failureLabel: '✗ Failed',
+  failureToast: '{error}',
+};
+
+function feedbackLabel(feedback, state, vars, defaults) {
+  const raw = state === 'pending' ? feedback?.pending        :
+              state === 'success' ? feedback?.success?.label :
+                                    feedback?.failure?.label;
+  const def = state === 'pending' ? defaults.pending        :
+              state === 'success' ? defaults.successLabel   :
+                                    defaults.failureLabel;
+  return (raw || def || '').replace(/\{(\w+)\}/g, (_, k) => String(vars?.[k] ?? ''));
+}
+
+// Empty string returned = do not show a toast.
+function feedbackToast(feedback, state, vars, defaults) {
+  const raw = state === 'success' ? feedback?.success?.toast : feedback?.failure?.toast;
+  const def = state === 'success' ? defaults.successToast    : defaults.failureToast;
+  const tmpl = (raw != null && raw !== '') ? raw : (def ?? '');
+  return tmpl ? tmpl.replace(/\{(\w+)\}/g, (_, k) => String(vars?.[k] ?? '')) : '';
+}
+
+// Handles post-success navigation. redirect values:
+//   undefined/'none' → default behaviour (go to comment if commentUrl present, else nothing)
+//   'comment'        → scroll to posted comment (no-op if no commentUrl)
+//   'workflow_runs'  → navigate to /{repo}/actions
+//   'deployments'    → navigate to /{repo}/deployments
+function handleRedirect(redirect, res, repo) {
+  if (!redirect || redirect === 'none') return;
+  if (redirect === 'comment') {
+    if (res.commentUrl) setTimeout(() => scrollToComment(res.commentUrl), 500);
+    return;
+  }
+  const dest =
+    redirect === 'workflow_runs' ? `https://github.com/${repo}/actions` :
+    redirect === 'deployments'   ? `https://github.com/${repo}/deployments` :
+    null;
+  if (dest) setTimeout(() => { location.href = dest; }, 500);
+}
+
+// ── User-input prompt — {ask:"Label"} tokens ─────────────────────────────────
+// Scan a value (string or conditional array) for {ask:"..."} patterns.
+
+function scanAskLabels(value) {
+  const re = /\{ask:"([^"]+)"\}/g;
+  const labels = [];
+  if (typeof value === 'string') {
+    let m; while ((m = re.exec(value)) !== null) labels.push(m[1]);
+  } else if (Array.isArray(value)) {
+    for (const rule of value) labels.push(...scanAskLabels(rule.value ?? ''));
+  }
+  return labels;
+}
+
+function collectAskLabels(action) {
+  const seen = new Set();
+  const add = arr => arr.forEach(l => seen.add(l));
+  add(scanAskLabels(action.comment ?? ''));
+  add(scanAskLabels(action.file ?? ''));
+  add(scanAskLabels(action.eventType ?? ''));
+  add(scanAskLabels(action.environment ?? ''));
+  for (const v of Object.values(action.inputs  ?? {})) add(scanAskLabels(v));
+  for (const v of Object.values(action.payload  ?? {})) add(scanAskLabels(v));
+  return [...seen];
+}
+
+function applyAskValues(action, values) {
+  const subst = s => typeof s === 'string'
+    ? s.replace(/\{ask:"([^"]+)"\}/g, (_, l) => values[l] ?? '') : s;
+  const substConditional = v =>
+    typeof v === 'string' ? subst(v) :
+    Array.isArray(v) ? v.map(r => ({ ...r, value: subst(r.value ?? '') })) : v;
+  const substObj = o => o
+    ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, subst(String(v))])) : o;
+  const r = { ...action };
+  if (action.comment     != null) r.comment     = substConditional(action.comment);
+  if (action.file        != null) r.file        = substConditional(action.file);
+  if (action.eventType   != null) r.eventType   = substConditional(action.eventType);
+  if (action.environment != null) r.environment = substConditional(action.environment);
+  if (action.inputs )  r.inputs  = substObj(action.inputs);
+  if (action.payload)  r.payload = substObj(action.payload);
+  return r;
+}
+
+// Shows a modal dialog collecting values for each label. Returns a Promise that
+// resolves with {label: value} or rejects if the user cancels.
+function showAskModal(labels) {
+  return new Promise((resolve, reject) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;';
+
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#fff;border-radius:12px;padding:24px;min-width:320px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.25);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Action requires input';
+    title.style.cssText = 'margin:0 0 16px;font-size:15px;font-weight:600;color:#1f2328;';
+    dialog.append(title);
+
+    const inputEls = {};
+    for (const label of labels) {
+      const group = document.createElement('div');
+      group.style.marginBottom = '12px';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      lbl.style.cssText = 'display:block;font-size:12px;font-weight:500;color:#57606a;margin-bottom:4px;';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.autocomplete = 'off';
+      inp.style.cssText = 'width:100%;padding:6px 10px;box-sizing:border-box;border:1px solid #d0d7de;border-radius:6px;font-size:13px;outline:none;';
+      inp.addEventListener('focus', () => { inp.style.borderColor = '#0969da'; inp.style.boxShadow = '0 0 0 3px rgba(9,105,218,0.12)'; });
+      inp.addEventListener('blur',  () => { inp.style.borderColor = '#d0d7de'; inp.style.boxShadow = 'none'; });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
+      group.append(lbl, inp);
+      dialog.append(group);
+      inputEls[label] = inp;
+    }
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:20px;';
+    const cancelBtn  = document.createElement('button');
+    cancelBtn.textContent  = 'Cancel';
+    cancelBtn.style.cssText = 'padding:6px 14px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid #d0d7de;background:#fff;color:#1f2328;';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Continue';
+    confirmBtn.style.cssText = 'padding:6px 14px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:#1f883d;color:#fff;';
+
+    const dismiss = ok => {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      if (ok) { const v = {}; for (const [l, el] of Object.entries(inputEls)) v[l] = el.value; resolve(v); }
+      else reject(new Error('cancelled'));
+    };
+    const confirm = () => dismiss(true);
+    cancelBtn.addEventListener('click', () => dismiss(false));
+    confirmBtn.addEventListener('click', confirm);
+    overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(false); });
+    const onKey = e => { if (e.key === 'Escape') dismiss(false); };
+    document.addEventListener('keydown', onKey);
+
+    btnRow.append(cancelBtn, confirmBtn);
+    dialog.append(btnRow);
+    overlay.append(dialog);
+    document.body.append(overlay);
+    Object.values(inputEls)[0]?.focus();
+  });
+}
 
 // ── Config Resolution ─────────────────────────────────────────────────────────
 
 function deepMergeConfig(base, override) {
   const result = { ...base };
   for (const key of Object.keys(override)) {
+    if (key === 'actionsMode' || key === 'prActionsMode' || key === 'commentActionsMode') continue;
+
+    if (key === 'actions') {
+      const mode = override.actionsMode ?? 'replace';
+      result.actions = mode === 'extend'
+        ? [...(base.actions ?? []), ...(override.actions ?? [])]
+        : override.actions;
+      continue;
+    }
+
+    // Group/repo overrides store prActions and commentActions as separate keys
+    // so each trigger type can be toggled and mode'd independently.
+    if (key === 'prActions') {
+      const mode    = override.prActionsMode ?? 'replace';
+      const basePr  = (result.actions ?? []).filter(a => a.trigger !== 'comment');
+      const baseCa  = (result.actions ?? []).filter(a => a.trigger === 'comment');
+      const newPr   = (override.prActions ?? []).map(a => ({ ...a, trigger: 'prHeader' }));
+      result.actions = [
+        ...(mode === 'extend' ? [...basePr, ...newPr] : newPr),
+        ...baseCa,
+      ];
+      continue;
+    }
+
+    if (key === 'commentActions') {
+      const mode   = override.commentActionsMode ?? 'replace';
+      const curPr  = (result.actions ?? []).filter(a => a.trigger !== 'comment');
+      const curCa  = (result.actions ?? []).filter(a => a.trigger === 'comment');
+      const newCa  = (override.commentActions ?? []).map(a => ({ ...a, trigger: 'comment' }));
+      result.actions = [
+        ...curPr,
+        ...(mode === 'extend' ? [...curCa, ...newCa] : newCa),
+      ];
+      continue;
+    }
+
     if (
       result[key] !== null &&
       typeof result[key] === 'object' &&
@@ -166,9 +317,6 @@ const STYLES = `
     scroll-margin-top: 80px;
   }
 
-  /* Disabled state when no GitHub token is configured */
-  body.wd-token-missing .wd-btn       { opacity: 0.4; cursor: not-allowed; }
-  body.wd-token-missing [data-wd-build] { opacity: 0.4 !important; cursor: not-allowed !important; }
 
   /* Toast */
   #wd-toast-container {
@@ -257,7 +405,7 @@ function scrollToComment(commentUrl) {
   }
 }
 
-// ── Build Button (PR header) ──────────────────────────────────────────────────
+// ── PR Action Buttons (PR header) ─────────────────────────────────────────────
 
 function parsePrFromUrl() {
   const match = location.pathname.match(/^\/([^/]+\/[^/]+)\/pull\/(\d+)/);
@@ -269,18 +417,21 @@ function isPullRequestPage() {
   return /\/pull\/\d+/.test(location.pathname);
 }
 
-function attachBuildButton() {
+function attachPrActionButtons() {
   if (!isPullRequestPage()) return;
   if (isRepoExcluded()) return;
 
   const pr = parsePrFromUrl();
   if (!pr) return;
 
-  const hiddenStates = CONFIG.buildButton?.hiddenOnStates ?? [];
-  if (hiddenStates.length > 0) {
-    const state = getPrState();
-    if (hiddenStates.some(s => state.includes(s.toLowerCase()))) return;
-  }
+  const prState = getPrState();
+  const visibleActions = (CONFIG.actions ?? []).filter(a => {
+    if (a.trigger !== 'prHeader') return false;
+    const hidden = a.filter?.hideOnStates ?? [];
+    return !hidden.some(s => prState.includes(s.toLowerCase()));
+  });
+
+  if (visibleActions.length === 0) return;
 
   const containers = [
     ...document.querySelectorAll('[data-component="PH_Actions"]'),
@@ -292,7 +443,10 @@ function attachBuildButton() {
     container.dataset.wdBuildBtn = '1';
     const sibling = [...container.querySelectorAll('button')]
       .find(b => !b.textContent.toLowerCase().includes('experience'));
-    container.prepend(makeBuildButton(pr, sibling));
+    // Reverse so after prepend they appear in config order (first = leftmost)
+    for (const prAction of [...visibleActions].reverse()) {
+      container.prepend(makePrActionBtn(pr, prAction, sibling));
+    }
   }
 
   const stickyHeader =
@@ -306,25 +460,27 @@ function attachBuildButton() {
       stickyHeader.querySelector('.State') ??
       document.querySelector('[class*="StateLabel-Icon"]')?.parentElement ??
       document.querySelector('.State');
-    const anchor     = titleArea ?? stickyHeader;
+    const anchor = titleArea ?? stickyHeader;
 
     if (!anchor.dataset.wdBuildBtn) {
       anchor.dataset.wdBuildBtn = '1';
-      const stickyBtn = makeStickyBuildButton(pr);
-      if (stateLabel && anchor.contains(stateLabel)) {
-        stateLabel.after(stickyBtn);
-      } else {
-        anchor.appendChild(stickyBtn);
+      for (const prAction of visibleActions) {
+        const stickyBtn = makeStickyPrActionBtn(pr, prAction);
+        if (stateLabel && anchor.contains(stateLabel)) {
+          stateLabel.after(stickyBtn);
+        } else {
+          anchor.appendChild(stickyBtn);
+        }
       }
     }
   }
 }
 
-function makeStickyBuildButton(pr) {
+function makeStickyPrActionBtn(pr, prAction) {
   const btn = document.createElement('button');
-  btn.innerHTML        = CONFIG.buildButton.label;
-  btn.title            = 'Post build comment and start build';
-  btn.dataset.wdBuild  = '1';
+  btn.innerHTML       = prAction.label;
+  btn.title           = prAction.label;
+  btn.dataset.wdBuild = '1';
 
   const stateLabel =
     document.querySelector('[class*="StateLabel-Icon"]')?.parentElement ??
@@ -354,54 +510,60 @@ function makeStickyBuildButton(pr) {
     }
   }
 
-  applyStyle(CONFIG.buildButton.color);
+  applyStyle(prAction.color);
 
   btn.addEventListener('click', () => {
     if (!TOKEN_CONFIGURED) {
-      showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
       chrome.runtime.sendMessage({ type: 'openOptions' });
       return;
     }
-    btn.innerHTML = '⏳ Starting Build…';
-    applyStyle(CONFIG.buildButton.color, 'default', '0.7');
-    btn.disabled = true;
-
-    chrome.runtime.sendMessage({
-      type: 'build', repo: pr.repo, prNumber: pr.prNumber,
-      buildComment: CONFIG.buildComment,
-    }, res => {
-      if (res?.success) {
-        btn.innerHTML = '✓ Build Started';
-        applyStyle('#1a7f37');
-        setTimeout(() => scrollToComment(res.commentUrl), 500);
-        setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; applyStyle(CONFIG.buildButton.color); btn.disabled = false; }, 5000);
-      } else {
-        btn.innerHTML = '✗ Failed';
-        applyStyle('#cf222e');
-        btn.disabled = false;
-        showToast({ success: false, message: res?.error ?? 'Failed to post build comment.' });
-        setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; applyStyle(CONFIG.buildButton.color); }, 3000);
+    (async () => {
+      let action = prAction.action;
+      const askLabels = collectAskLabels(action);
+      if (askLabels.length) {
+        try { action = applyAskValues(action, await showAskModal(askLabels)); }
+        catch { return; }
       }
-    });
+      btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
+      applyStyle(prAction.color, 'default', '0.7');
+      btn.disabled = true;
+
+      chrome.runtime.sendMessage(
+        { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
+        res => {
+          if (res?.success) {
+            btn.innerHTML = feedbackLabel(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+            applyStyle('#1a7f37');
+            const sToast = feedbackToast(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+            if (sToast) showToast({ success: true, message: sToast });
+            handleRedirect(prAction.feedback?.success?.redirect, res, pr.repo);
+            setTimeout(() => { btn.innerHTML = prAction.label; applyStyle(prAction.color); btn.disabled = false; }, 5000);
+          } else {
+            const errVars = { error: res?.error || 'Action failed.' };
+            btn.innerHTML = feedbackLabel(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+            applyStyle('#cf222e');
+            btn.disabled = false;
+            const fToast = feedbackToast(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+            if (fToast) showToast({ success: false, message: fToast });
+            setTimeout(() => { btn.innerHTML = prAction.label; applyStyle(prAction.color); }, 3000);
+          }
+        }
+      );
+    })();
   });
 
-  btn.addEventListener('mouseenter', () => {
-    if (btn.disabled) return;
-    if (!TOKEN_CONFIGURED) btn.innerHTML = '⚠️ Token required';
-  });
-  btn.addEventListener('mouseleave', () => {
-    if (btn.disabled) return;
-    btn.innerHTML = CONFIG.buildButton.label;
-  });
+  btn.addEventListener('mouseenter', () => { if (!btn.disabled && !TOKEN_CONFIGURED) btn.innerHTML = 'Setup'; });
+  btn.addEventListener('mouseleave', () => { if (!btn.disabled) btn.innerHTML = TOKEN_CONFIGURED ? prAction.label : 'Setup'; });
 
   return btn;
 }
 
-function makeBuildButton(pr, sibling) {
+function makePrActionBtn(pr, prAction, sibling) {
   const btn = document.createElement('button');
-  btn.innerHTML        = CONFIG.buildButton.label;
-  btn.title            = 'Post build comment and start build';
-  btn.dataset.wdBuild  = '1';
+  btn.innerHTML       = prAction.label;
+  btn.title           = prAction.label;
+  btn.dataset.wdBuild = '1';
 
   if (sibling) {
     const s = window.getComputedStyle(sibling);
@@ -418,96 +580,114 @@ function makeBuildButton(pr, sibling) {
       `;
     }
 
-    applyStyle(CONFIG.buildButton.color, 'white');
+    applyStyle(prAction.color, 'white');
 
     btn.addEventListener('click', () => {
       if (!TOKEN_CONFIGURED) {
-        showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
         chrome.runtime.sendMessage({ type: 'openOptions' });
         return;
       }
-      btn.innerHTML = '⏳ Starting Build…';
-      applyStyle(CONFIG.buildButton.color, 'white', 'default', '0.7');
-      btn.disabled = true;
-
-      chrome.runtime.sendMessage({
-        type: 'build', repo: pr.repo, prNumber: pr.prNumber,
-        buildAction: CONFIG.buildButton?.action ?? { type: 'comment', comment: CONFIG.buildComment ?? '' },
-      }, res => {
-        if (res?.success) {
-          btn.innerHTML = '✓ Build Started';
-          applyStyle('#1a7f37', 'white');
-          if (res.commentUrl) setTimeout(() => scrollToComment(res.commentUrl), 500);
-          setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; applyStyle(CONFIG.buildButton.color, 'white'); btn.disabled = false; }, 5000);
-        } else {
-          btn.innerHTML = '✗ Failed';
-          applyStyle('#cf222e', 'white');
-          btn.disabled = false;
-          showToast({ success: false, message: res?.error ?? 'Failed to post build comment.' });
-          setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; applyStyle(CONFIG.buildButton.color, 'white'); }, 3000);
+      (async () => {
+        let action = prAction.action;
+        const askLabels = collectAskLabels(action);
+        if (askLabels.length) {
+          try { action = applyAskValues(action, await showAskModal(askLabels)); }
+          catch { return; }
         }
-      });
+        btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
+        applyStyle(prAction.color, 'white', 'default', '0.7');
+        btn.disabled = true;
+
+        chrome.runtime.sendMessage(
+          { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
+          res => {
+            if (res?.success) {
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              applyStyle('#1a7f37', 'white');
+              const sToast = feedbackToast(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              if (sToast) showToast({ success: true, message: sToast });
+              handleRedirect(prAction.feedback?.success?.redirect, res, pr.repo);
+              setTimeout(() => { btn.innerHTML = prAction.label; applyStyle(prAction.color, 'white'); btn.disabled = false; }, 5000);
+            } else {
+              const errVars = { error: res?.error || 'Action failed.' };
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              applyStyle('#cf222e', 'white');
+              btn.disabled = false;
+              const fToast = feedbackToast(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              if (fToast) showToast({ success: false, message: fToast });
+              setTimeout(() => { btn.innerHTML = prAction.label; applyStyle(prAction.color, 'white'); }, 3000);
+            }
+          }
+        );
+      })();
     });
+
+    btn.addEventListener('mouseenter', () => { if (!btn.disabled && !TOKEN_CONFIGURED) btn.innerHTML = 'Setup'; });
+    btn.addEventListener('mouseleave', () => { if (!btn.disabled) btn.innerHTML = TOKEN_CONFIGURED ? prAction.label : 'Setup'; });
+  } else {
+    btn.className        = 'wd-build-btn';
+    btn.style.background = prAction.color;
 
     btn.addEventListener('mouseenter', () => {
       if (btn.disabled) return;
-      if (!TOKEN_CONFIGURED) btn.innerHTML = '⚠️ Token required';
-    });
-    btn.addEventListener('mouseleave', () => {
-      if (btn.disabled) return;
-      btn.innerHTML = CONFIG.buildButton.label;
-    });
-  } else {
-    btn.className          = 'wd-build-btn';
-    btn.style.background   = CONFIG.buildButton.color;
-    btn.addEventListener('mouseenter', () => {
-      if (btn.disabled) return;
-      if (!TOKEN_CONFIGURED) btn.innerHTML = '⚠️ Token required';
+      if (!TOKEN_CONFIGURED) btn.innerHTML = 'Setup';
       else btn.style.filter = 'brightness(0.85)';
     });
     btn.addEventListener('mouseleave', () => {
       btn.style.filter = '';
-      if (btn.disabled) return;
-      btn.innerHTML = CONFIG.buildButton.label;
+      if (!btn.disabled) btn.innerHTML = prAction.label;
     });
 
     btn.addEventListener('click', () => {
       if (!TOKEN_CONFIGURED) {
-        showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
         chrome.runtime.sendMessage({ type: 'openOptions' });
         return;
       }
-      btn.innerHTML = '⏳ Starting Build…';
-      btn.className = 'wd-build-btn wd-loading';
-      btn.style.background = CONFIG.buildButton.color;
-      btn.disabled  = true;
-
-      chrome.runtime.sendMessage({
-        type: 'build', repo: pr.repo, prNumber: pr.prNumber,
-        buildAction: CONFIG.buildButton?.action ?? { type: 'comment', comment: CONFIG.buildComment ?? '' },
-      }, res => {
-        if (res?.success) {
-          btn.innerHTML = '✓ Build Started';
-          btn.className = 'wd-build-btn wd-success';
-          if (res.commentUrl) setTimeout(() => scrollToComment(res.commentUrl), 500);
-          setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; btn.className = 'wd-build-btn'; btn.style.background = CONFIG.buildButton.color; btn.disabled = false; }, 5000);
-        } else {
-          btn.innerHTML = '✗ Failed';
-          btn.className = 'wd-build-btn wd-failure';
-          btn.disabled  = false;
-          showToast({ success: false, message: res?.error ?? 'Failed to post build comment.' });
-          setTimeout(() => { btn.innerHTML = CONFIG.buildButton.label; btn.className = 'wd-build-btn'; btn.style.background = CONFIG.buildButton.color; }, 3000);
+      (async () => {
+        let action = prAction.action;
+        const askLabels = collectAskLabels(action);
+        if (askLabels.length) {
+          try { action = applyAskValues(action, await showAskModal(askLabels)); }
+          catch { return; }
         }
-      });
+        btn.innerHTML        = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
+        btn.className        = 'wd-build-btn wd-loading';
+        btn.style.background = prAction.color;
+        btn.disabled         = true;
+
+        chrome.runtime.sendMessage(
+          { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
+          res => {
+            if (res?.success) {
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              btn.className = 'wd-build-btn wd-success';
+              const sToast = feedbackToast(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              if (sToast) showToast({ success: true, message: sToast });
+              handleRedirect(prAction.feedback?.success?.redirect, res, pr.repo);
+              setTimeout(() => { btn.innerHTML = prAction.label; btn.className = 'wd-build-btn'; btn.style.background = prAction.color; btn.disabled = false; }, 5000);
+            } else {
+              const errVars = { error: res?.error || 'Action failed.' };
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              btn.className = 'wd-build-btn wd-failure';
+              btn.disabled  = false;
+              const fToast = feedbackToast(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              if (fToast) showToast({ success: false, message: fToast });
+              setTimeout(() => { btn.innerHTML = prAction.label; btn.className = 'wd-build-btn'; btn.style.background = prAction.color; }, 3000);
+            }
+          }
+        );
+      })();
     });
   }
 
   return btn;
 }
 
-// ── Deploy Buttons (comment links) ────────────────────────────────────────────
+// ── Comment Action Buttons (next to version strings in comments) ──────────────
 
-function createDeployButton({ label, color }) {
+function createCommentActionBtn({ label, color }) {
   const btn = document.createElement('span');
   btn.className        = 'wd-btn';
   btn.textContent      = label;
@@ -515,7 +695,7 @@ function createDeployButton({ label, color }) {
   btn.title            = label;
   btn.style.background = color;
   btn.addEventListener('mouseenter', () => {
-    if (!TOKEN_CONFIGURED) btn.textContent = '⚠️ Token required';
+    if (!TOKEN_CONFIGURED) btn.textContent = 'Setup';
   });
   btn.addEventListener('mouseleave', () => {
     btn.textContent = btn.dataset.label;
@@ -555,59 +735,76 @@ function attachHoverBehaviour(link, buttons) {
   });
 }
 
-function attachDeployClickHandler(btn, link, btnConfig) {
+function attachCommentClickHandler(btn, link, caConfig) {
   btn.addEventListener('click', e => {
     e.preventDefault();
     e.stopPropagation();
 
     if (!TOKEN_CONFIGURED) {
-      showToast({ success: false, message: 'No GitHub token configured. Open LazyDeploy settings to add one.' });
+      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
       chrome.runtime.sendMessage({ type: 'openOptions' });
       return;
     }
 
-    btn.textContent      = 'Deploying…';
-    btn.className        = 'wd-btn wd-visible wd-loading';
-    btn.style.background = btnConfig.color;
+    (async () => {
+      let action = caConfig.action;
+      const askLabels = collectAskLabels(action);
+      if (askLabels.length) {
+        try { action = applyAskValues(action, await showAskModal(askLabels)); }
+        catch { return; }
+      }
 
-    chrome.runtime.sendMessage({ type: 'trigger', url: link.href, buttonConfig: btnConfig }, res => {
+      btn.textContent      = feedbackLabel(caConfig.feedback, 'pending', {}, CA_FB_DEFAULTS);
+      btn.className        = 'wd-btn wd-visible wd-loading';
+      btn.style.background = caConfig.color;
+
+      chrome.runtime.sendMessage({ type: 'action', trigger: 'comment', url: link.href, action, tokens: caConfig.tokens ?? [], onMultiple: caConfig.onMultiple ?? 'all' }, res => {
       if (res?.success) {
-        const count     = res.count ?? 1;
-        btn.textContent = `✓ ${count} triggered`;
-        btn.className   = 'wd-btn wd-visible wd-success';
-        btn.style.background = btnConfig.color;
-        showToast({ success: true, message: `${count} workflow${count > 1 ? 's' : ''} triggered successfully.` });
+        const count      = res.count ?? 1;
+        btn.textContent  = feedbackLabel(caConfig.feedback, 'success', { count }, CA_FB_DEFAULTS);
+        btn.className    = 'wd-btn wd-visible wd-success';
+        btn.style.background = caConfig.color;
+        const sToast = feedbackToast(caConfig.feedback, 'success', { count }, CA_FB_DEFAULTS);
+        if (sToast) showToast({ success: true, message: sToast });
+        handleRedirect(caConfig.feedback?.success?.redirect, res, link.href.match(/github\.com\/([^/]+\/[^/]+)/)?.[1] ?? '');
       } else {
-        btn.textContent = '✗ Failed';
-        btn.className   = 'wd-btn wd-visible wd-failure';
+        const errVars    = { error: res?.error || 'Something went wrong. Check extension options.' };
+        btn.textContent  = feedbackLabel(caConfig.feedback, 'failure', errVars, CA_FB_DEFAULTS);
+        btn.className    = 'wd-btn wd-visible wd-failure';
         btn.style.background = '#cf222e';
-        showToast({ success: false, message: res?.error ?? 'Something went wrong. Check extension options.' });
+        const fToast = feedbackToast(caConfig.feedback, 'failure', errVars, CA_FB_DEFAULTS);
+        if (fToast) showToast({ success: false, message: fToast });
       }
 
       setTimeout(() => {
-        btn.textContent      = btnConfig.label;
+        btn.textContent      = caConfig.label;
         btn.className        = 'wd-btn wd-visible';
-        btn.style.background = btnConfig.color;
-        btn.title            = btnConfig.label;
+        btn.style.background = caConfig.color;
+        btn.title            = caConfig.label;
       }, 3000);
     });
+    })();
   });
 }
 
-function attachDeployButtons(link) {
+function attachCommentButtons(link) {
   if (link.dataset.wdAttached) return;
   if (isRepoExcluded()) return;
 
-  const author = getCommentAuthor(link);
-  if (!isAuthorAllowed(author)) return;
-
   link.dataset.wdAttached = '1';
 
-  const buttons = CONFIG.deployButtons.map(btnConfig => {
-    const btn = createDeployButton(btnConfig);
-    attachDeployClickHandler(btn, link, btnConfig);
-    return btn;
-  });
+  const author = getCommentAuthor(link);
+
+  const buttons = (CONFIG.actions ?? [])
+    .filter(caConfig => caConfig.trigger === 'comment')
+    .filter(caConfig => isActionAuthorAllowed(caConfig, author))
+    .map(caConfig => {
+      const btn = createCommentActionBtn(caConfig);
+      attachCommentClickHandler(btn, link, caConfig);
+      return btn;
+    });
+
+  if (buttons.length === 0) return;
 
   buttons.reduce((prev, btn) => { prev.after(btn); return btn; }, link);
   attachHoverBehaviour(link, buttons);
@@ -619,12 +816,22 @@ function isRepoExcluded() {
   const match = location.pathname.match(/^\/([^/]+\/[^/]+)/);
   if (!match) return false;
   const repo = match[1];
+  // Repo-specific config entry always bypasses the filter
   if ((GLOBAL_CONFIG.repos ?? {})[repo]) return false;
-  for (const pattern of CONFIG.excludedRepos ?? []) {
-    try { if (new RegExp(pattern).test(repo)) return true; }
-    catch { /* ignore invalid regex */ }
+
+  // Support old excludedRepos key for backward compat
+  const filter = CONFIG.repoFilter ?? { mode: 'exclude', patterns: CONFIG.excludedRepos ?? [] };
+  const { mode = 'exclude', patterns = [] } = filter;
+
+  const matches = pat => { try { return new RegExp(pat).test(repo); } catch { return pat === repo; } };
+
+  if (mode === 'include') {
+    // Inject only on repos that match at least one pattern; empty list = no restriction
+    return patterns.length > 0 && !patterns.some(matches);
   }
-  return false;
+
+  // exclude mode: skip repos that match any pattern
+  return patterns.some(matches);
 }
 
 function getPrState() {
@@ -646,8 +853,8 @@ function getCommentAuthor(link) {
   return authorEl?.textContent?.trim() ?? null;
 }
 
-function isAuthorAllowed(author) {
-  const filters = CONFIG.commentAuthorFilter ?? [];
+function isActionAuthorAllowed(caConfig, author) {
+  const filters = caConfig.filter?.authors ?? [];
   if (filters.length === 0) return true;
   if (!author) return false;
   for (const pattern of filters) {
@@ -660,8 +867,8 @@ function isAuthorAllowed(author) {
 // ── Scanner (runs on load + DOM changes) ─────────────────────────────────────
 
 function scan() {
-  attachBuildButton();
-  document.querySelectorAll('a[href*="#issuecomment-"]').forEach(attachDeployButtons);
+  attachPrActionButtons();
+  document.querySelectorAll('a[href*="#issuecomment-"]').forEach(attachCommentButtons);
 }
 
 function init() {
