@@ -368,6 +368,18 @@ function cardRow(label, ...content) {
 function cardRowTop(label, ...content) {
   const r = cardRow(label, ...content); r.classList.add('field-row--top'); return r;
 }
+function cfield(labelText, hintText, ...content) {
+  const el = mkDiv('cfield');
+  const lbl = mkEl('span', 'cfield-label', labelText);
+  if (hintText) {
+    const i = mkEl('i', 'field-hint', 'i');
+    i.dataset.hint = hintText;
+    i.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+    lbl.append(i);
+  }
+  el.append(lbl, ...content);
+  return el;
+}
 
 // ── KV editor helpers ─────────────────────────────────────────────────────────
 
@@ -466,7 +478,7 @@ function enableDragSort(listEl, itemSelector) {
 // _read(): returns a plain string when there is exactly one unconditional rule,
 // otherwise returns [{if?, value}] — backend handles both forms.
 
-function makeConditionalRules(initValue, { valuePlaceholder = 'value' } = {}) {
+function makeConditionalRules(initValue, { valuePlaceholder = 'value', useTextarea = false } = {}) {
   const wrap = mkDiv('');
 
   const normalize = v => {
@@ -483,8 +495,10 @@ function makeConditionalRules(initValue, { valuePlaceholder = 'value' } = {}) {
   const normalized = normalize(initValue);
   const initSimpleVal = isInitConditional ? '' : (normalized[0]?.value ?? '');
 
-  // ── Simple mode: single text input ──
-  const simpleInput = mkInput(initSimpleVal, true, valuePlaceholder);
+  // ── Simple mode: single text input or textarea ──
+  const simpleInput = useTextarea
+    ? (() => { const ta = document.createElement('textarea'); ta.className = 'field-textarea'; ta.placeholder = valuePlaceholder; ta.value = initSimpleVal; ta.rows = 3; return ta; })()
+    : mkInput(initSimpleVal, true, valuePlaceholder);
 
   // ── Conditional mode: rule list ──
   const ruleList = mkDiv('cond-rule-list');
@@ -929,11 +943,15 @@ function buildFeedbackSection(initFeedback, { isComment = false } = {}) {
   const failureLabelInput = mkInput(fb.failure?.label ?? '', false, '✗ Failed');
   const failureToastInput = mkInput(fb.failure?.toast ?? '', false, failureToastPh);
 
-  const successPair = mkDiv('feedback-pair');
-  successPair.append(successLabelInput, mkEl('span', 'feedback-sep', 'toast'), successToastInput);
+  const successPair = mkDiv('cfield-pair');
+  const _slWrap = mkDiv(''); _slWrap.append(mkEl('span', 'cfield-pair-sublabel', 'Label'), successLabelInput);
+  const _stWrap = mkDiv(''); _stWrap.append(mkEl('span', 'cfield-pair-sublabel', 'Toast'), successToastInput);
+  successPair.append(_slWrap, _stWrap);
 
-  const failurePair = mkDiv('feedback-pair');
-  failurePair.append(failureLabelInput, mkEl('span', 'feedback-sep', 'toast'), failureToastInput);
+  const failurePair = mkDiv('cfield-pair');
+  const _flWrap = mkDiv(''); _flWrap.append(mkEl('span', 'cfield-pair-sublabel', 'Label'), failureLabelInput);
+  const _ftWrap = mkDiv(''); _ftWrap.append(mkEl('span', 'cfield-pair-sublabel', 'Toast'), failureToastInput);
+  failurePair.append(_flWrap, _ftWrap);
 
   // Redirect select
   const redirectSel = document.createElement('select');
@@ -959,12 +977,12 @@ function buildFeedbackSection(initFeedback, { isComment = false } = {}) {
   const body = mkDiv('feedback-section-body');
   body.append(
     mkEl('p', 'feedback-subsection-title', 'Label & Toast'),
-    cardRow(fieldLabelEl('Loading label', 'Button text while the action is running (e.g. ⏳ Deploying…)'), pendingInput),
-    cardRowTop(fieldLabelEl('Success', 'Label: button text after a successful action. Toast: bottom-right notification (leave blank to suppress)'), successPair),
-    cardRowTop(fieldLabelEl('Failure', 'Label: button text after a failed action. Toast: error notification shown. Use {error} for the API error message'), failurePair),
+    cfield('Loading label', 'Button text while the action is running (e.g. ⏳ Deploying…)', pendingInput),
+    cfield('Success', 'Label: button text after a successful action. Toast: bottom-right notification (leave blank to suppress)', successPair),
+    cfield('Failure', 'Label: button text after a failed action. Toast: error notification shown. Use {error} for the API error message', failurePair),
     note,
     mkEl('p', 'feedback-subsection-title', 'Others'),
-    cardRow(fieldLabelEl('After success, go to', 'URL to open in the current tab after a successful action — useful for redirecting to a deploy log or PR list. Supports {placeholders}'), redirectSel),
+    cfield('After success, go to', 'URL to open in the current tab after a successful action — useful for redirecting to a deploy log or PR list. Supports {placeholders}', redirectSel),
   );
 
   const chevron = mkEl('span', 'feedback-chevron', '▾');
@@ -1159,10 +1177,10 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const afList = mkDiv('tag-list');
   populateTagList(afList, action.filter?.authors);
   const afAdd  = mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => afList.append(makeTagRow('')));
-  const afNote = mkEl('p', 'sub-note', 'Usernames or regex. Empty = show for all authors.');
+  const afNote = mkEl('p', 'cfield-helper', 'Usernames or regex. Empty = show for all authors.');
   const afInline = mkDiv('tag-inline-row'); afInline.append(afList, afAdd);
-  const afWrap = mkDiv(''); afWrap.append(afInline, afNote);
-  const afRow  = cardRowTop(fieldLabelEl('Restrict to authors', 'Only show this button to PRs or comments by these GitHub usernames (exact match or regex). Leave empty to show for everyone'), afWrap);
+  const afRow = cfield('Restrict to authors', 'Only show this button to PRs or comments by these GitHub usernames (exact match or regex). Leave empty to show for everyone');
+  afRow.append(afInline, afNote);
 
   // onMultiple
   const omName  = 'om-' + Math.random().toString(36).slice(2);
@@ -1177,8 +1195,8 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const tokenList  = mkDiv('token-list');
   for (const t of action.tokens ?? []) tokenList.append(makeTokenCard(t, { allowCommentSources }));
   const addTokenSel = makeAddTokenSelect(tokenList, allowCommentSources);
-  const tokensNote  = mkEl('p', 'sub-note', 'Extract values from context. commentBody and commentAuthor sources only work for Comment-trigger actions.');
-  const tokensWrap  = mkDiv(''); tokensWrap.append(tokenList, addTokenSel, tokensNote);
+  const varField = cfield('Variables', 'Extract named values from PR context and use them as {placeholders} in the action fields below');
+  varField.append(tokenList, addTokenSel);
 
   const actionForm = buildActionFormEl(action.action);
 
@@ -1189,11 +1207,11 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const targetRefInput  = mkInput(tgt.ref      ?? '', false, 'branch, tag or SHA — blank = default/PR branch');
   const targetPrInput   = mkInput(tgt.prNumber ?? '', false, 'PR number — blank = this PR');
 
-  const targetRepoRow = cardRow(fieldLabelEl('Target repo', 'Run this action on a different repo than the current one. Supports {placeholders}. Leave blank to use this PR\'s repo'), targetRepoInput);
-  const targetRefRow  = cardRow(fieldLabelEl('Target ref',  'Branch, tag, or SHA to dispatch against. Supports {placeholders}. Leave blank to use the default branch (workflow) or PR branch (deployment)'), targetRefInput);
-  const targetPrRow   = cardRow(fieldLabelEl('Target PR',   'Post the comment on a specific PR number. Supports {placeholders}. Leave blank to use this PR'), targetPrInput);
+  const targetRepoRow = cfield('Target repo', 'Run this action on a different repo than the current one. Supports {placeholders}. Leave blank to use this PR\'s repo', targetRepoInput);
+  const targetRefRow  = cfield('Target ref',  'Branch, tag, or SHA to dispatch against. Supports {placeholders}. Leave blank to use the default branch (workflow) or PR branch (deployment)', targetRefInput);
+  const targetPrRow   = cfield('Target PR',   'Post the comment on a specific PR number. Supports {placeholders}. Leave blank to use this PR', targetPrInput);
 
-  const targetBody = mkDiv('target-override-body');
+  const targetBody = mkDiv('target-panel');
   targetBody.hidden = !hasTarget;
   targetBody.append(targetRepoRow, targetRefRow, targetPrRow);
 
@@ -1215,23 +1233,24 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const targetSection = mkDiv('target-override-section');
   targetSection.append(targetToggle, targetBody);
 
-  const hideRow = cardRow(fieldLabelEl('Hide when PR is', 'Don\'t show this button when the PR matches any of these states'), hideGroup);
+  const hideRow = cfield('Hide when PR is', 'Don\'t show this button when the PR matches any of these states', hideGroup);
   const fbSection  = buildFeedbackSection(action.feedback, { isComment: initTrigger === 'comment' });
   const othersTitle = [...fbSection.el.querySelectorAll('.feedback-subsection-title')]
     .find(el => el.textContent === 'Others');
-  const omRow = cardRow(fieldLabelEl('Multiple matches', 'When a comment contains multiple matching rows, fire for each one (All) or only the first (First match only)'), omGroup);
+  const omRow = cfield('Multiple matches', 'When a comment contains multiple matching rows, fire for each one (All) or only the first (First match only)', omGroup);
   othersTitle.after(omRow);
   omRow.after(afRow);
   afRow.after(hideRow);
 
   // Stacks assignment — lives inside Additional Settings
   const stackChips = makeStackChips(action.stacks);
-  const stacksRow  = cardRow(fieldLabelEl('Stacks', 'Nest this action inside a dropdown button. Add it to one or more stacks — it will appear in each stack\'s dropdown menu'), stackChips);
+  const stacksRow = cfield('Stacks', 'Nest this action inside a dropdown button. Add it to one or more stacks — it will appear in each stack\'s dropdown menu', stackChips);
   fbSection.el.querySelector('.feedback-section-body').prepend(stacksRow);
 
   body.append(
-    cardRowTop(fieldLabelEl('Variables', 'Extract named values from PR context and use them as {placeholders} in the action fields below'), tokensWrap),
-    actionForm.el,
+    actionForm.typeRowEl,
+    varField,
+    actionForm.subformsEl,
     targetSection,
     fbSection.el,
   );
@@ -1270,22 +1289,21 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
 
 function buildActionFormEl(initAction) {
   const action = initAction ?? { type: 'comment', comment: '' };
-  const wrap = mkDiv('');
 
   const sel = document.createElement('select'); sel.className = 'field-select'; sel.style.width = 'auto'; sel.style.justifySelf = 'start';
   [['comment','Post PR comment'],['workflow','Dispatch workflow'],['repositoryDispatch','Repository dispatch'],['deployment','Create deployment']]
     .forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.append(o); });
   sel.value = action.type ?? 'comment';
-  wrap.append(cardRow(fieldLabelEl('Action type', 'What happens when this button is clicked'), sel));
+  const typeRowEl = cfield('Action type', 'What happens when this button is clicked', sel);
 
   // comment
   const commentRules = makeConditionalRules(
     action.type === 'comment' ? (action.comment ?? '') : '',
-    { valuePlaceholder: 'LazyGitHub in action' }
+    { valuePlaceholder: 'LazyGitHub in action', useTextarea: true }
   );
   const commentSub = mkDiv('action-subform');
   commentSub.dataset.field = 'action-comment';
-  commentSub.append(cardRowTop(fieldLabelEl('Comment body', 'Text of the GitHub comment to post. Supports {placeholders} for dynamic values'), commentRules));
+  commentSub.append(cfield('Comment body', 'Text of the GitHub comment to post. Supports {placeholders} for dynamic values', commentRules));
 
   // workflow — normalize old `files: [{if, file}]` to new `file: string | [{if?, value}]`
   const initFile = (() => {
@@ -1303,7 +1321,7 @@ function buildActionFormEl(initAction) {
   const wfInputsWrap = mkDiv(''); wfInputsWrap.append(wfList, wfAdd, wfTokenNote);
   const workflowSub = mkDiv('action-subform');
   workflowSub.dataset.field = 'action-file';
-  workflowSub.append(cardRowTop(fieldLabelEl('Workflow file', 'Filename inside .github/workflows/ to trigger (e.g. deploy.yml). Supports {placeholders} and conditional routing'), fileRules), cardRowTop(fieldLabelEl('Workflow inputs', 'Key-value pairs passed as workflow_dispatch inputs. Values support {placeholders}'), wfInputsWrap));
+  workflowSub.append(cfield('Workflow file', 'Filename inside .github/workflows/ to trigger (e.g. deploy.yml). Supports {placeholders} and conditional routing', fileRules), cfield('Workflow inputs', 'Key-value pairs passed as workflow_dispatch inputs. Values support {placeholders}', wfInputsWrap));
 
   // repositoryDispatch
   const rdEventRules = makeConditionalRules(
@@ -1316,7 +1334,7 @@ function buildActionFormEl(initAction) {
   const rdWrap = mkDiv(''); rdWrap.append(rdList, rdAdd);
   const rdSub = mkDiv('action-subform');
   rdSub.dataset.field = 'action-eventType';
-  rdSub.append(cardRowTop(fieldLabelEl('Event type', 'The event_type string sent with the repository_dispatch. Supports {placeholders} and conditional routing'), rdEventRules), cardRowTop(fieldLabelEl('Event payload', 'Key-value pairs sent inside client_payload. Values support {placeholders}'), rdWrap));
+  rdSub.append(cfield('Event type', 'The event_type string sent with the repository_dispatch. Supports {placeholders} and conditional routing', rdEventRules), cfield('Event payload', 'Key-value pairs sent inside client_payload. Values support {placeholders}', rdWrap));
 
   // deployment
   const depEnvRules = makeConditionalRules(
@@ -1329,15 +1347,21 @@ function buildActionFormEl(initAction) {
   const depWrap = mkDiv(''); depWrap.append(depList, depAdd);
   const depSub = mkDiv('action-subform');
   depSub.dataset.field = 'action-environment';
-  depSub.append(cardRowTop(fieldLabelEl('Environment', 'Deployment environment name (e.g. staging, production). Supports {placeholders} and conditional routing'), depEnvRules), cardRowTop(fieldLabelEl('Deployment payload', 'Extra key-value pairs included in the deployment payload. Values support {placeholders}'), depWrap));
+  depSub.append(cfield('Environment', 'Deployment environment name (e.g. staging, production). Supports {placeholders} and conditional routing', depEnvRules), cfield('Deployment payload', 'Extra key-value pairs included in the deployment payload. Values support {placeholders}', depWrap));
 
   const subs = { comment: commentSub, workflow: workflowSub, repositoryDispatch: rdSub, deployment: depSub };
   const sync = () => { for (const [t, s] of Object.entries(subs)) s.hidden = t !== sel.value; };
   sync(); sel.addEventListener('change', sync);
-  wrap.append(commentSub, workflowSub, rdSub, depSub);
+
+  const subformsEl = mkDiv('');
+  subformsEl.append(commentSub, workflowSub, rdSub, depSub);
+  const wrap = mkDiv('');
+  wrap.append(typeRowEl, subformsEl);
 
   return {
     el: wrap,
+    typeRowEl,
+    subformsEl,
     typeSelect: sel,
     read() {
       const t = sel.value;

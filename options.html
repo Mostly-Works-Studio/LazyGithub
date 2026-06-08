@@ -225,8 +225,10 @@
     .checkbox-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #1f2328; cursor: pointer; }
 
     /* ── Action sub-forms ── */
-    .action-subform { margin-top: 4px; }
+    .action-subform { margin-bottom: 10px; }
     .action-subform .field-row { grid-template-columns: 120px 1fr; margin-bottom: 6px; }
+    .action-subform .cfield { margin-bottom: 12px; }
+    .action-subform .cfield:last-child { margin-bottom: 0; }
 
     /* ── KV editor ── */
     .kv-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
@@ -256,7 +258,7 @@
     }
     .deploy-card-name:hover { border-color: #d0d7de; background: white; }
     .deploy-card-name:focus { border-color: #0969da; background: white; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
-    .deploy-card-body { padding: 10px 12px; }
+    .deploy-card-body { padding: 14px 14px 10px; }
     .deploy-card-body .field-row { grid-template-columns: 100px 1fr; margin-bottom: 7px; }
     .deploy-card-body .field-label { font-size: 11px; }
 
@@ -335,7 +337,21 @@
     .target-override-body .field-row { grid-template-columns: 80px 1fr; margin-bottom: 6px; }
     .target-override-body .field-row:last-child { margin-bottom: 0; }
     .target-override-body .field-label { font-size: 11px; }
+    .target-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; padding: 10px 12px; background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; }
+    .target-panel .cfield { margin-bottom: 0; }
     .on-multiple-group { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; padding-top: 2px; }
+
+    /* ── Top-aligned card field groups ── */
+    .cfield { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
+    .cfield:last-child { margin-bottom: 0; }
+    .cfield-label { font-size: 12px; font-weight: 600; color: #1f2328; display: inline-flex; align-items: center; gap: 4px; }
+    .cfield-helper { font-size: 11px; color: #8c959f; line-height: 1.5; }
+    .cfield-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .cfield-pair-sublabel { font-size: 10px; color: #8c959f; display: block; margin-bottom: 3px; }
+    .field-textarea { width: 100%; padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 56px; box-sizing: border-box; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+    .field-textarea:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
+    .feedback-section-body .cfield { margin-bottom: 12px; }
+    .feedback-section-body .cfield:last-child { margin-bottom: 0; }
 
     /* ── Conditional rules building block ── */
     .cond-rule-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 5px; }
@@ -490,6 +506,7 @@
     .feedback-chevron { font-size: 18px; transition: transform 0.15s; line-height: 1; }
     .feedback-section.collapsed .feedback-section-header .feedback-chevron { transform: rotate(-90deg); }
     .feedback-section.collapsed .feedback-section-body { display: none; }
+    .feedback-section-body { padding-top: 8px; }
     .feedback-subsection-title {
       font-size: 11px; font-weight: 600; color: #8c959f; text-transform: uppercase;
       letter-spacing: 0.04em; margin: 10px 0 6px;
