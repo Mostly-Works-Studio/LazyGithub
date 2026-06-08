@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LazyDeploy — Settings</title>
+  <title>LazyGitHub — Settings</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     [hidden] { display: none !important; }
@@ -162,9 +162,34 @@
       display: inline-flex; align-items: center; justify-content: center;
       width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0;
       background: #d0d7de; color: #57606a; font-size: 9px; font-weight: 700;
-      cursor: help; line-height: 1; font-style: normal;
+      cursor: default; line-height: 1; font-style: normal;
     }
     .field-hint:hover { background: #8c959f; color: white; }
+
+    /* ── Custom tooltip ── */
+    #hint-tooltip {
+      position: fixed; z-index: 9999; pointer-events: none;
+      max-width: 260px; padding: 7px 10px;
+      background: #1f2328; color: #f0f3f6;
+      font-size: 11px; line-height: 1.5; font-family: inherit;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      opacity: 0; transition: opacity 0.12s ease;
+      white-space: pre-line;
+    }
+    #hint-tooltip.visible { opacity: 1; }
+    #hint-tooltip::after {
+      content: ''; position: absolute;
+      border: 5px solid transparent;
+    }
+    #hint-tooltip.tip-below::after {
+      top: -10px; left: 50%; transform: translateX(-50%);
+      border-bottom-color: #1f2328;
+    }
+    #hint-tooltip.tip-above::after {
+      bottom: -10px; left: 50%; transform: translateX(-50%);
+      border-top-color: #1f2328;
+    }
 
     .field-input {
       padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 6px;
@@ -200,7 +225,7 @@
     .checkbox-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #1f2328; cursor: pointer; }
 
     /* ── Action sub-forms ── */
-    .action-subform { margin-top: 2px; padding-left: 158px; }
+    .action-subform { margin-top: 4px; }
     .action-subform .field-row { grid-template-columns: 120px 1fr; margin-bottom: 6px; }
 
     /* ── KV editor ── */
@@ -211,6 +236,9 @@
     .tag-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
     .tag-row  { display: flex; gap: 5px; align-items: center; }
     .tag-row .field-input { flex: 1; }
+    .tag-inline-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 4px; }
+    .tag-inline-row .tag-list { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
+    .tag-inline-row .tag-row .field-input { width: 150px; flex: none; }
 
     /* ── Deploy button cards ── */
     .deploy-card { border: 1px solid #d0d7de; border-radius: 6px; margin: 0 12px 8px; overflow: hidden; }
@@ -260,13 +288,24 @@
     }
     .override-section-header:hover { background: #f6f8fa; }
     .override-toggle { flex-shrink: 0; cursor: pointer; accent-color: #0969da; }
-    .inherited-badge { font-size: 11px; color: #8c959f; font-weight: 400; margin-left: auto; }
+    .inherited-badge { font-size: 11px; color: #8c959f; font-weight: 400; }
     .override-section-body { padding: 8px 12px 10px; }
     .override-mode-row { display: flex; gap: 16px; margin-bottom: 8px; padding: 6px 8px; background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; }
+    .mode-discovery-link { background: none; border: none; padding: 0; margin-top: 4px; font-size: 11px; color: #8c959f; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; display: block; }
+    .mode-discovery-link:hover { color: #0969da; }
+    .mode-badge {
+      font-size: 10px; font-weight: 500; font-family: inherit;
+      padding: 1px 7px; border-radius: 10px;
+      background: #eaeef2; color: #57606a;
+      border: 1px solid #d0d7de;
+      cursor: pointer; user-select: none; white-space: nowrap;
+    }
+    .mode-badge:hover { background: #d0d7de; color: #1f2328; }
+    .override-mode-group { display: flex; align-items: center; gap: 5px; }
+    .override-header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
     .override-copy-btn { margin-bottom: 8px; }
     .override-section-body .field-row { grid-template-columns: 110px 1fr; margin-bottom: 7px; }
     .override-section-body .field-row:last-child { margin-bottom: 0; }
-    .override-section-body .action-subform { padding-left: 118px; }
     .override-section-body .action-subform .field-row { grid-template-columns: 100px 1fr; }
     .override-section-body .deploy-card { margin: 0 0 8px; }
 
@@ -282,8 +321,21 @@
     .token-list { margin-bottom: 6px; }
     .token-list .deploy-card { margin: 0 0 6px; }
 
-    /* ── On-multiple radio group ── */
-    .on-multiple-group { display: flex; flex-direction: column; gap: 5px; padding-top: 2px; }
+    /* ── Target override ── */
+    .target-override-section { margin-top: 8px; }
+    .target-override-toggle {
+      display: inline-block; font-size: 11px; color: #0969da;
+      cursor: pointer; user-select: none;
+    }
+    .target-override-toggle:hover { text-decoration: underline; }
+    .target-override-body {
+      margin-top: 6px; padding: 8px 10px;
+      background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 4px;
+    }
+    .target-override-body .field-row { grid-template-columns: 80px 1fr; margin-bottom: 6px; }
+    .target-override-body .field-row:last-child { margin-bottom: 0; }
+    .target-override-body .field-label { font-size: 11px; }
+    .on-multiple-group { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; padding-top: 2px; }
 
     /* ── Conditional rules building block ── */
     .cond-rule-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 5px; }
@@ -352,7 +404,76 @@
     .feedback-pair { display: grid; grid-template-columns: 1fr auto 1.1fr; gap: 5px; align-items: center; }
     .feedback-sep  { font-size: 11px; color: #8c959f; white-space: nowrap; }
 
-    @keyframes wd-highlight-flash {
+    /* ── Card name edit button ── */
+    .card-edit-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      color: #8c959f; cursor: pointer;
+      padding: 3px; border-radius: 4px; flex-shrink: 0;
+      user-select: none; margin-left: 3px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .card-edit-btn:hover { color: #0969da; background: rgba(9,105,218,0.08); }
+
+    /* ── Card name edit popup ── */
+    .card-edit-popup {
+      position: fixed; z-index: 10000;
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; box-shadow: 0 8px 24px rgba(140,149,159,0.25);
+      padding: 12px 14px; min-width: 220px;
+    }
+    .card-edit-popup-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .card-edit-popup-row:last-child { margin-bottom: 0; }
+    .card-edit-popup-label {
+      font-size: 10px; font-weight: 600; color: #8c959f;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .card-edit-popup-input {
+      padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 5px;
+      font-size: 13px; font-family: inherit; outline: none; width: 100%;
+    }
+    .card-edit-popup-input:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
+    .card-edit-popup-color {
+      width: 40px; height: 30px; border: 1px solid #d0d7de;
+      border-radius: 5px; cursor: pointer; padding: 2px; background: none;
+    }
+
+    /* ── Stack chips (per-action assignment) ── */
+    .stack-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    .stack-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 6px 2px 8px; border-radius: 10px;
+      background: #f6f8fa; border: 1px solid #d0d7de;
+      font-size: 11px; font-weight: 500; color: #1f2328;
+    }
+    .stack-chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-right: 1px; }
+    .stack-chip-rm {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: none; border: none; cursor: pointer;
+      color: #8c959f; font-size: 14px; line-height: 1; padding: 0; margin-left: 1px;
+    }
+    .stack-chip-rm:hover { color: #cf222e; }
+
+    /* ── Stack assignment popup menu ── */
+    .stack-assign-menu {
+      position: fixed; z-index: 10001;
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; padding: 4px;
+      min-width: 160px; max-width: 240px;
+      box-shadow: 0 8px 24px rgba(140,149,159,0.25);
+      font-family: inherit;
+    }
+    .stack-assign-item {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 6px 10px; border: none;
+      background: none; border-radius: 5px; cursor: pointer;
+      font-size: 12px; font-weight: 500; color: #1f2328;
+      text-align: left; white-space: nowrap;
+    }
+    .stack-assign-item:hover { background: #f6f8fa; }
+    .stack-assign-item--create { color: #0969da; justify-content: center; border-top: 1px solid #eaeef2; margin-top: 2px; padding-top: 8px; }
+    .stack-assign-empty { padding: 8px 10px; font-size: 12px; color: #8c959f; text-align: center; }
+    .stack-assign-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
       0%   { box-shadow: 0 0 0 3px rgba(9,105,218,0.35), inset 0 0 0 9999px rgba(9,105,218,0.08); }
       100% { box-shadow: none; }
     }
@@ -377,6 +498,7 @@
   </style>
 </head>
 <body>
+  <div id="hint-tooltip"></div>
   <div class="card">
 
     <!-- ── Open reason banner ── -->
@@ -387,8 +509,8 @@
 
     <!-- ── Header ── -->
     <div class="card-header">
-      <h1>LazyDeploy</h1>
-      <p class="subtitle">Configure your GitHub token and workflow settings to start deploying directly from PR pages.</p>
+      <h1>LazyGitHub</h1>
+      <p class="subtitle">Build one-click PR actions across your repos. Set global defaults, then override by group or repo. Changes take effect after reloading your GitHub tab.</p>
     </div>
 
     <!-- ── Token ── -->
@@ -447,9 +569,9 @@
         <label>Extension Configuration</label>
       </div>
       <p class="hint">
-        Configure actions, tokens, and per-repo overrides. Click any section header to expand it.
-        Use <strong>{ } JSON</strong> to export your config or import one from a teammate.
-        Reload the GitHub tab after saving for changes to take effect.
+        Click any section header to expand it.
+        Use <strong>{ } JSON</strong> to export your config or share it with a teammate.
+        <strong>Save Config</strong> applies all tabs at once — then reload your GitHub tab for changes to take effect.
       </p>
 
       <!-- Tab nav -->
@@ -469,7 +591,7 @@
             <button class="btn btn-secondary btn-sm" id="add-pr-action-btn">+ Add Action</button>
           </div>
           <div id="pr-actions-list" style="padding: 8px 0 4px;"></div>
-          <p class="sub-note" style="padding: 0 14px 10px;">Buttons injected into the PR header. Drag the <code>⠿</code> handle to reorder. Use <code>{branchName}</code>, <code>{prTitle}</code>, <code>{prNumber}</code>, <code>{repo}</code>, or any custom token in action fields. Use <code>{ask:"Label"}</code> to prompt the user for input at click time.</p>
+          <p class="sub-note" style="padding: 0 14px 10px;">Buttons in the PR header that post comments, dispatch workflows, create deployments, or fire repository events. Use <code>{branchName}</code>, <code>{prTitle}</code>, <code>{prNumber}</code>, <code>{repo}</code>, or any extracted variable as placeholders. Add <code>{input:"Label"}</code> to prompt for user input at click time. Drag <code>⠿</code> to reorder.</p>
         </div>
 
         <!-- Comment Actions -->
@@ -479,7 +601,7 @@
             <button class="btn btn-secondary btn-sm" id="add-comment-action-btn">+ Add Action</button>
           </div>
           <div id="comment-actions-list" style="padding: 8px 0 4px;"></div>
-          <p class="sub-note" style="padding: 0 14px 10px;">Buttons shown next to matching links in PR comments. Define tokens to extract from the comment, then use <code>{tokenName}</code> in action fields. Use <code>{ask:"Label"}</code> to prompt for input at click time. Drag the <code>⠿</code> handle to reorder.</p>
+          <p class="sub-note" style="padding: 0 14px 10px;">Buttons that appear next to matching text in PR comments (hover to reveal, auto-hide after 5 s). Extract values like version numbers or hashes from the comment and use them as placeholders in action fields. Add <code>{input:"Label"}</code> to prompt for user input at click time. Drag <code>⠿</code> to reorder.</p>
         </div>
 
         <!-- Additional Settings -->
@@ -489,6 +611,16 @@
             Additional Settings
           </div>
           <div class="feedback-section-body">
+
+            <!-- Stacks -->
+            <div class="form-section" id="stacks-section">
+              <div class="form-section-header">
+                Stacks
+                <button class="btn btn-secondary btn-sm" id="add-stack-btn">+ Add Stack</button>
+              </div>
+              <div id="stacks-list" style="padding: 8px 0 4px;"></div>
+              <p class="sub-note" style="padding: 0 14px 10px;">Group related actions under a shared dropdown to reduce clutter — e.g. group "Build", "Test", "Deploy" under a "Release" button. Assign stacks to individual actions from inside each action card. One action can belong to multiple stacks.</p>
+            </div>
 
             <!-- Repo Filter -->
             <div class="form-section collapsible collapsed" id="repo-filter-section">
@@ -501,17 +633,42 @@
               <div class="form-section-body">
                 <div class="field-row">
                   <span class="field-label">Mode</span>
-                  <div style="display:flex; flex-direction:column; gap:6px; padding-top:2px;">
-                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="exclude" checked> Exclude repos matching patterns</label>
-                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="include"> Include only repos matching patterns</label>
+                  <div style="display:flex; gap:16px; flex-wrap:wrap; padding-top:2px;">
+                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="exclude" checked> Exclude matching</label>
+                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="include"> Include only matching</label>
                   </div>
                 </div>
                 <div class="field-row field-row--top" style="margin-top:6px;">
                   <span class="field-label">Patterns</span>
                   <div>
-                    <div class="tag-list" id="repo-filter-list"></div>
-                    <button class="btn btn-secondary btn-xs" id="repo-filter-add">+ Add</button>
-                    <p class="sub-note">Exact name or regex (e.g. <code>myorg/helm-.*</code>). Repos listed in the Repos tab always bypass this filter regardless of mode.</p>
+                    <div class="tag-inline-row">
+                      <div class="tag-list" id="repo-filter-list"></div>
+                      <button class="btn btn-secondary btn-xs" id="repo-filter-add">+ Add</button>
+                    </div>
+                    <p class="sub-note">Exact name or regex (e.g. <code>myorg/helm-.*</code>). Repos listed explicitly in the Repos tab are never excluded by this filter.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dropdown Thresholds -->
+            <div class="form-section" style="margin-top: 6px;" id="dropdown-thresholds-section">
+              <div class="form-section-header">
+                Dropdown Thresholds
+              </div>
+              <div class="form-section-body">
+                <div class="field-row">
+                  <span class="field-label">PR header <i class="field-hint" data-hint="Collapse PR header buttons into a dropdown when there are more than N actions. Set to 1 to always show a dropdown. The label field sets the dropdown button text (leave blank for the default).">i</i></span>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="number" id="pr-dropdown-threshold" class="field-input" min="1" max="99" style="width:70px;" value="3" placeholder="3">
+                    <input type="text" id="pr-dropdown-label" class="field-input" placeholder="LazyGitHub ▾">
+                  </div>
+                </div>
+                <div class="field-row" style="margin-top:4px;">
+                  <span class="field-label">Comment buttons <i class="field-hint" data-hint="Collapse comment action buttons into a dropdown when there are more than N actions. Set to 1 to always show a dropdown. The label field sets the dropdown button text (leave blank for the default).">i</i></span>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="number" id="comment-dropdown-threshold" class="field-input" min="1" max="99" style="width:70px;" value="4" placeholder="4">
+                    <input type="text" id="comment-dropdown-label" class="field-input" placeholder="Actions ▾">
                   </div>
                 </div>
               </div>
@@ -523,11 +680,11 @@
                 <button class="btn btn-secondary btn-sm" id="add-token-preset-btn" hidden>+ Add Pattern</button>
               </div>
               <div id="extraction-patterns-hint" style="padding: 10px 14px;">
-                <p class="hint" style="margin:0;">Want to maintain a library of reusable extraction patterns shared across actions? <a href="#" id="show-extraction-patterns-link">Set up Extraction Patterns →</a></p>
+                <p class="hint" style="margin:0;">Build a library of reusable token templates shared across all actions. <a href="#" id="show-extraction-patterns-link">Set up Extraction Patterns →</a></p>
               </div>
               <div id="extraction-patterns-body" hidden>
                 <div id="token-presets-list" style="padding: 8px 0 4px;"></div>
-                <p class="sub-note" style="padding: 0 14px 10px;">Define reusable extraction templates. Copy from a pattern when adding tokens to an action — copies are independent. Available sources: <code>commentBody</code>, <code>commentAuthor</code>, <code>prTitle</code>, <code>prBranch</code>, <code>prNumber</code>, <code>prAuthor</code>, <code>repo</code>.</p>
+                <p class="sub-note" style="padding: 0 14px 10px;">A shared library of reusable extraction templates. Use them as starting points when adding variables to an action — each copy is independent. Sources: <code>commentBody</code>, <code>commentAuthor</code>, <code>prTitle</code>, <code>prBranch</code>, <code>prNumber</code>, <code>prAuthor</code>, <code>repo</code>.</p>
               </div>
             </div>
           </div>
@@ -538,7 +695,8 @@
       <!-- Groups tab -->
       <div class="tab-panel" id="tab-groups" hidden>
         <div class="tab-hint">
-          <strong>First matching group wins.</strong> Each pattern in <code>Match repos</code> is tested as an exact name, then as a regex. Give each group a <strong>name</strong> so you can identify it at a glance. Toggle <strong>Actions</strong> to override — unselected sections inherit from global. Choose <strong>Replace</strong> to fully swap inherited actions, or <strong>Extend</strong> to append yours after them. Enabling an override for the first time auto-fills from the current global config as a starting point. Extraction patterns are global-only.
+          <strong>First matching group wins.</strong> Patterns in <code>Match repos</code> are tested top-to-bottom as an exact name, then as a regex.<br>
+          For each group, toggle sections to override global config — unselected sections are inherited. Choose <strong>Replace</strong> to swap out inherited actions entirely, or <strong>Extend</strong> to append yours after them. Enabling an override for the first time auto-fills from the current global config. Extraction patterns are global-only.
         </div>
         <div class="tab-actions"><button class="btn btn-secondary btn-sm" id="add-group-btn">+ Add Group</button></div>
         <div id="groups-list"></div>
@@ -570,7 +728,7 @@
       &nbsp;·&nbsp;
       <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank" style="color:#656d76;">⭐ Leave a review</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/Mostly-Works-Studio/lazydeploy" target="_blank" style="color:#656d76;">Contribute on GitHub →</a>
+      <a href="https://github.com/Mostly-Works-Studio/LazyGithub" target="_blank" style="color:#656d76;">Contribute on GitHub →</a>
     </p>
 
   </div>

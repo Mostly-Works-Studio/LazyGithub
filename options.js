@@ -4,7 +4,8 @@ const openReasonBanner = document.getElementById('open-reason-banner');
 const openReasonText   = document.getElementById('open-reason-text');
 
 const OPEN_REASON_MESSAGES = {
-  'no-token': 'A LazyDeploy button was clicked, but no GitHub token is configured yet. Add your token below to start using the extension.',
+  'no-token':       'A LazyGitHub button was clicked, but no GitHub token is configured yet. Add your token below to start using the extension.',
+  'not-configured': 'A LazyGitHub button was clicked, but that action hasn\'t been set up yet. Configure it below to start using it.',
 };
 
 const reason = new URLSearchParams(location.search).get('reason');
@@ -12,6 +13,36 @@ if (reason && OPEN_REASON_MESSAGES[reason]) {
   openReasonText.textContent  = OPEN_REASON_MESSAGES[reason];
   openReasonBanner.hidden     = false;
 }
+
+// ── Stack name pool ───────────────────────────────────────────────────────────
+
+const STACK_NAMES = [
+  'Alpha Assembly','The Boilerplates','Capsule Command','Bravo Battery',
+  'Pipeline Purgatory','Akatsuki Alliance','Charlie Cluster','The Bug Bundles',
+  'Survey Syndicate','Delta Division','Script Swarms','Section 9 Squad',
+  'Echo Enclave','Wizard Workshop','Black Knight Brigade','Foxtrot Flotilla',
+  'Chaos Control','Jujutsu Junction','Golf Garrison','Conflict Clubs',
+  'Gotei 13 Guard','Hotel Heavyweights','Push Parties','Straw Hat Grand Fleet',
+  'India Infantry','Automation Armory','Phantom Pack','Juliet Junction',
+  'Cron Collectives','NERV Network','Kilo Kingdom','Logic Legions',
+  'Night Raid Regime','Lima Lineup','Thread Throngs','Odd Jobs Office',
+  'Mike Mavericks','Deployment Depots','S-Class Syndicate','November Nexus',
+  'Webhook Waves','Demon Slayer Corps','Oscar Outposts','Binary Battalions',
+  'Ghoul Guilds','Papa Patrols','Event Engines','Dai-Gurren Division',
+  'Quebec Queues','Chatty Cartels','Bebop Brigade','Romeo Raiders',
+  'Root Regiments','Hunter Associations','Sierra Systems','Core Consolidations',
+  'Overlord Orders','Tango Targets','Data Dumps','Armed Detective Agencies',
+  'Uniform Units','Localhost Legacies','Blue Lock Blocks','Victor Valves',
+  'Trigger Tribes','Uchiha Uplinks','Whiskey Webhooks','Garbage Collections',
+  'Otaku Operations','X-Ray Examiners','Geass Garrisons','Scraper Sects',
+  'Yankee Yards','Saitama\'s Suites','Alchemist Assemblers','Zulu Zeniths',
+  'Shinigami Squadrons','Hokage Heralds','Apex Activations','Steins;Gate Keepers',
+  'Delta Drivers','Titan Outbreaks','Hacker Hives','Charlie Compilers',
+  'Maverick Monitors','Zodiac Zones','Echo Enforcers','Iron Fortresses',
+  'Saiyan Surges','Bravo Botnets','Blackout Brigades','Ninja Noticeboards',
+  'Foxtrot Firewalls','Phoenix Squadrons','Tango Techs','Whiskey Wardens',
+  'Raptor Runner Rows','Buggy Bombers','Omega Outputs','Infinite Tsukuyomi Orchestras',
+];
 
 // ── Token ─────────────────────────────────────────────────────────────────────
 
@@ -161,6 +192,7 @@ const reposList               = document.getElementById('repos-list');
 const prActionsList           = document.getElementById('pr-actions-list');
 const commentActionsList      = document.getElementById('comment-actions-list');
 const tokenPresetsList        = document.getElementById('token-presets-list');
+const stacksList              = document.getElementById('stacks-list');
 const extractionPatternsHint  = document.getElementById('extraction-patterns-hint');
 const extractionPatternsBody  = document.getElementById('extraction-patterns-body');
 const addTokenPresetBtn       = document.getElementById('add-token-preset-btn');
@@ -263,9 +295,71 @@ function buildColorPair(initColor) {
 }
 function fieldLabelEl(text, hint) {
   const el = mkEl('span', 'field-label', text);
-  if (hint) { const i = mkEl('i', 'field-hint', 'i'); i.title = hint; el.append(i); }
+  if (hint) { const i = mkEl('i', 'field-hint', 'i'); i.dataset.hint = hint; el.append(i); }
   return el;
 }
+
+// ── Hint tooltip controller ───────────────────────────────────────────────────
+
+(function initHintTooltip() {
+  const tip = document.getElementById('hint-tooltip');
+  let showTimer = null;
+
+  function show(anchor) {
+    const text = anchor.dataset.hint;
+    if (!text) return;
+    tip.textContent = text;
+
+    const GAP = 8;
+    const anchorRect = anchor.getBoundingClientRect();
+
+    // Measure at a hidden-but-rendered position to get real dimensions
+    tip.style.visibility = 'hidden';
+    tip.style.top = '0'; tip.style.left = '0';
+    tip.classList.remove('visible', 'tip-above', 'tip-below');
+
+    const tipH = tip.offsetHeight;
+    const tipW = tip.offsetWidth;
+    const spaceBelow = window.innerHeight - anchorRect.bottom;
+    const placeAbove = spaceBelow < tipH + GAP + 10 && anchorRect.top > tipH + GAP;
+
+    let top, left;
+    if (placeAbove) {
+      top = anchorRect.top - tipH - GAP;
+      tip.classList.add('tip-above');
+    } else {
+      top = anchorRect.bottom + GAP;
+      tip.classList.add('tip-below');
+    }
+
+    left = anchorRect.left + anchorRect.width / 2 - tipW / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+
+    tip.style.top  = top  + 'px';
+    tip.style.left = left + 'px';
+    tip.style.visibility = '';
+    tip.classList.add('visible');
+  }
+
+  function hide() {
+    clearTimeout(showTimer);
+    tip.classList.remove('visible');
+  }
+
+  document.addEventListener('mouseover', e => {
+    const anchor = e.target.closest('.field-hint');
+    if (!anchor) return;
+    clearTimeout(showTimer);
+    showTimer = setTimeout(() => show(anchor), 250);
+  });
+
+  document.addEventListener('mouseout', e => {
+    if (!e.target.closest('.field-hint')) return;
+    hide();
+  });
+
+  document.addEventListener('scroll', hide, true);
+}());
 function cardRow(label, ...content) {
   const r = mkDiv('field-row');
   r.append(typeof label === 'string' ? mkEl('span', 'field-label', label) : label, ...content);
@@ -280,7 +374,7 @@ function cardRowTop(label, ...content) {
 function makeKvRow(key, val) {
   const row = mkDiv('kv-row');
   const k = mkInput(key, true, 'key');    k.className += ' kv-key';
-  const v = mkInput(val,  true, '{token} or value'); v.className += ' kv-val';
+  const v = mkInput(val,  true, '{variable} or value'); v.className += ' kv-val';
   const rm = mkSmallBtn('×', 'btn btn-danger btn-xs', () => row.remove());
   row.append(k, v, rm);
   return row;
@@ -415,7 +509,7 @@ function makeConditionalRules(initValue, { valuePlaceholder = 'value' } = {}) {
   const addBtn = mkSmallBtn('+ Add Rule', 'btn btn-secondary btn-xs',
     () => ruleList.append(makeRuleRow({ if: '', value: '' })));
   const note = mkEl('p', 'sub-note', '');
-  note.innerHTML = 'Condition: <code>tokenName:contains:VALUE</code> or <code>tokenName:notContains:VALUE</code>. Rules are tried in order — leave blank for a fallback.';
+  note.innerHTML = 'Condition: <code>variableName:contains:VALUE</code> or <code>variableName:notContains:VALUE</code>. Rules are tried in order — leave blank for a fallback.';
 
   const condBlock = mkDiv('');
   condBlock.append(ruleList, addBtn, note);
@@ -492,31 +586,213 @@ function buildSourceSelect(selected, allowCommentSources) {
   return sel;
 }
 
+// ── Stack management ──────────────────────────────────────────────────────────
+
+function openStackAssignMenu(anchor, items, onSelect) {
+  document.querySelector('.stack-assign-menu')?.remove();
+  const menu = document.createElement('div');
+  menu.className = 'stack-assign-menu';
+
+  const regular = items.filter(i => i.id !== '__new__');
+  const createItem = items.find(i => i.id === '__new__');
+
+  if (regular.length === 0 && !createItem) { menu.remove(); return; }
+
+  if (regular.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'stack-assign-empty';
+    empty.textContent = 'No stacks yet';
+    menu.append(empty);
+  }
+
+  for (const item of regular) {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'stack-assign-item';
+    const dot = document.createElement('span');
+    dot.className = 'stack-assign-dot'; dot.style.background = item.color;
+    btn.append(dot, document.createTextNode(item.label));
+    btn.addEventListener('click', () => { menu.remove(); onSelect(item); });
+    menu.append(btn);
+  }
+
+  if (createItem) {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'stack-assign-item stack-assign-item--create';
+    btn.textContent = createItem.label;
+    btn.addEventListener('click', () => { menu.remove(); onSelect(createItem); });
+    menu.append(btn);
+  }
+
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + menu.offsetHeight > window.innerHeight - 8) top = rect.top - menu.offsetHeight - 4;
+  menu.style.top  = Math.max(8, top) + 'px';
+  menu.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+
+  const dismiss = e => {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', dismiss, true); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', dismiss, true), 0);
+}
+
+function pickRandomStackName() {
+  const used = new Set([...stacksList.querySelectorAll('.deploy-card')].map(c => c._read().label).filter(Boolean));
+  const pool = STACK_NAMES.filter(n => !used.has(n));
+  return (pool.length ? pool : STACK_NAMES)[Math.floor(Math.random() * (pool.length || STACK_NAMES.length))];
+}
+
+function makeNewStack() {
+  return makeStackCard({ label: pickRandomStackName(), color: randomActionColor() });
+}
+
+function makeStackCard(stack) {
+  const card = mkDiv('deploy-card');
+  const header = mkDiv('deploy-card-header');
+  header.style.borderBottom = 'none';
+
+  const handle = mkEl('span', 'drag-handle', '⠿'); handle.draggable = true;
+
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color'; colorInput.value = stack.color || '#24292f';
+  colorInput.style.cssText = 'position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;padding:0;border:none;';
+  const dot = mkEl('span', 'deploy-card-dot');
+  dot.style.background = stack.color || '#24292f';
+  dot.style.position = 'relative'; dot.style.cursor = 'pointer';
+  dot.appendChild(colorInput);
+  colorInput.addEventListener('input', () => { dot.style.background = colorInput.value; fireStackSync(); });
+
+  const name = document.createElement('input');
+  name.type = 'text'; name.className = 'deploy-card-name';
+  name.value = stack.label || ''; name.placeholder = 'Stack name';
+
+  const pencil = makePencilBtn();
+  const nameWrap = mkDiv('deploy-card-name-wrap');
+  nameWrap.append(name, pencil);
+  pencil.addEventListener('click', e => {
+    e.stopPropagation();
+    cardEditPopup.open(pencil, [
+      { label: 'Stack name', input: name },
+      { label: 'Color', input: colorInput, type: 'color' },
+    ]);
+  });
+
+  const idInput = document.createElement('input');
+  idInput.type = 'hidden';
+  idInput.value = stack.id || ('stk-' + Math.random().toString(36).slice(2));
+
+  const fireStackSync = () => document.dispatchEvent(
+    new CustomEvent('stack-card-sync', { detail: { id: idInput.value, label: name.value.trim(), color: colorInput.value } })
+  );
+  name.addEventListener('input', fireStackSync);
+
+  const rm = mkSmallBtn('× Remove', 'btn btn-danger btn-xs', () => card.remove());
+  header.append(handle, dot, nameWrap, rm);
+  card.append(idInput, header);
+
+  card._read = () => ({ id: idInput.value, label: name.value.trim(), color: colorInput.value });
+  return card;
+}
+
+function makeStackChips(initStackIds) {
+  const wrap = mkDiv('');
+  const chipsEl = mkDiv('stack-chips');
+
+  const readGlobalStacks = () =>
+    [...stacksList.querySelectorAll('.deploy-card')].map(c => c._read()).filter(s => s.id);
+
+  // Declared before addChip so the closure can re-append it to stay at the end
+  const addBtn = mkSmallBtn('+ Add to stack', 'btn btn-secondary btn-xs', () => {});
+
+  const addChip = (id, label, color) => {
+    if ([...chipsEl.querySelectorAll('.stack-chip')].some(c => c.dataset.id === id)) return;
+    const chip = mkDiv('stack-chip');
+    chip.dataset.id = id;
+    const dot = document.createElement('span');
+    dot.className = 'stack-chip-dot'; dot.style.background = color || '#24292f';
+    chip.append(dot, document.createTextNode(label || id));
+    const rm = document.createElement('button');
+    rm.type = 'button'; rm.className = 'stack-chip-rm'; rm.textContent = '×';
+    chip.append(rm);
+    chipsEl.append(chip);
+    if (addBtn.parentNode === chipsEl) chipsEl.append(addBtn);
+
+    // Stay in sync when the global stack card is edited
+    const chipText    = [...chip.childNodes].find(n => n.nodeType === 3);
+    const syncHandler = e => {
+      if (e.detail.id !== id) return;
+      if (chipText) chipText.textContent = e.detail.label || id;
+      dot.style.background = e.detail.color;
+    };
+    document.addEventListener('stack-card-sync', syncHandler);
+    rm.addEventListener('click', () => { chip.remove(); document.removeEventListener('stack-card-sync', syncHandler); });
+  };
+
+  for (const id of initStackIds ?? []) {
+    const s = readGlobalStacks().find(s => s.id === id);
+    if (s) addChip(s.id, s.label, s.color);
+  }
+  addBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const currentIds = new Set([...chipsEl.querySelectorAll('.stack-chip')].map(c => c.dataset.id));
+    const available  = readGlobalStacks().filter(s => !currentIds.has(s.id));
+    openStackAssignMenu(addBtn, [
+      ...available,
+      { id: '__new__', label: '+ Create new stack', color: '' },
+    ], item => {
+      if (item.id === '__new__') {
+        const newStack = makeNewStack();
+        stacksList.append(newStack);
+        document.getElementById('additional-settings-section').classList.remove('collapsed');
+        flashHighlight(newStack);
+        const inp = newStack.querySelector('.deploy-card-name');
+        inp?.focus(); inp?.select();
+        const { id: newId, label: newLabel, color: newColor } = newStack._read();
+        addChip(newId, newLabel, newColor);
+        newStack.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        addChip(item.id, item.label, item.color);
+      }
+    });
+  });
+
+  chipsEl.append(addBtn);
+  wrap.append(chipsEl);
+  wrap._read = () => [...chipsEl.querySelectorAll('.stack-chip')].map(c => c.dataset.id);
+  return wrap;
+}
+
 // ── Token card (per-action token) ─────────────────────────────────────────────
 
 function makeTokenCard(token, { allowCommentSources = true, expanded = false } = {}) {
-  const { card, dot, name: nameInput } = makeActionCardShell(token.name || 'variableName', null, { draggable: false, expanded });
+  const { card, dot, name: nameInput, pencil } = makeActionCardShell(token.name || 'variableName', null, { draggable: false, expanded });
   dot.remove();
   nameInput.placeholder = 'variableName';
   nameInput.value = token.name ?? '';
+
+  pencil.addEventListener('click', e => {
+    e.stopPropagation();
+    cardEditPopup.open(pencil, [{ label: 'Variable name', input: nameInput }]);
+  });
 
   const sourceSel    = buildSourceSelect(token.source ?? (allowCommentSources ? 'commentBody' : 'prTitle'), allowCommentSources);
   const regexInput   = mkInput(token.regex   ?? '', true,  'optional pattern');
   const regexNote    = mkEl('p', 'sub-note', 'Optional — capture group 1 is the value. If absent, the full source value is used.');
   const defaultInput = mkInput(token.default ?? '', false, '');
-  const skipList     = mkDiv('tag-list');
+  const skipList  = mkDiv('tag-list');
   populateTagList(skipList, token.skip);
-  const skipAdd  = mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => skipList.append(makeTagRow('')));
-  const skipNote = mkEl('p', 'sub-note', 'If the extracted value matches any entry, the entire row is skipped and no action is triggered.');
-  const skipWrap = mkDiv(''); skipWrap.append(skipList, skipAdd, skipNote);
+  const skipAdd   = mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => skipList.append(makeTagRow('')));
+  const skipNote  = mkEl('p', 'sub-note', 'If the extracted value matches any entry, the entire row is skipped and no action is triggered.');
+  const skipInline = mkDiv('tag-inline-row'); skipInline.append(skipList, skipAdd);
+  const skipWrap  = mkDiv(''); skipWrap.append(skipInline, skipNote);
 
   const body = mkDiv('deploy-card-body');
   body.append(
-    cardRow(fieldLabelEl('Extract from', 'Which part of the PR context to read the value from'), sourceSel),
-    cardRow(fieldLabelEl('Match pattern', 'Optional regex — capture group 1 becomes the token value. Leave blank to use the full source text'), regexInput),
+    cardRow(fieldLabelEl('Extract from', 'Where to read this variable\'s value from — choose a PR field or the comment body'), sourceSel),
+    cardRow(fieldLabelEl('Match pattern', 'Optional regex to extract a specific part of the source. Capture group 1 becomes the value; leave blank to use the full source'), regexInput),
     regexNote,
-    cardRow(fieldLabelEl('Fallback value', 'Used when the pattern doesn\'t match or the source is empty'), defaultInput),
-    cardRowTop(fieldLabelEl('Ignore if value is', 'Skip triggering an action for this match if the extracted value equals any of these entries'), skipWrap),
+    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
+    cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
   );
   card.append(body);
 
@@ -533,12 +809,17 @@ function makeTokenCard(token, { allowCommentSources = true, expanded = false } =
 // ── Extraction pattern card (global patterns library) ─────────────────────────
 
 function makeTokenPresetCard(preset, { expanded = false } = {}) {
-  const { card, dot, name } = makeActionCardShell(preset.label || 'Pattern', '#6e7781', { draggable: false, expanded });
+  const { card, dot, name, pencil } = makeActionCardShell(preset.label || 'Pattern', '#6e7781', { draggable: false, expanded });
   dot.remove();
+  name.placeholder = 'Pattern name';
+
+  pencil.addEventListener('click', e => {
+    e.stopPropagation();
+    cardEditPopup.open(pencil, [{ label: 'Pattern name', input: name }]);
+  });
+
   const body = mkDiv('deploy-card-body');
 
-  const labelInput = mkInput(preset.label ?? '', false, 'e.g. Build Version');
-  labelInput.addEventListener('input', () => { name.value = labelInput.value || 'Pattern'; });
   const idInput    = mkInput(preset.id    ?? '', true,  'myVariable');
   idInput.dataset.field = 'id';
   const sourceSel  = buildSourceSelect(preset.source ?? 'commentBody', true);
@@ -550,22 +831,22 @@ function makeTokenPresetCard(preset, { expanded = false } = {}) {
   populateTagList(skipList, preset.skip);
   const skipAdd  = mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => skipList.append(makeTagRow('')));
   const skipNote = mkEl('p', 'sub-note', 'If the extracted value matches any entry, the row is skipped.');
-  const skipWrap = mkDiv(''); skipWrap.append(skipList, skipAdd, skipNote);
+  const skipInline = mkDiv('tag-inline-row'); skipInline.append(skipList, skipAdd);
+  const skipWrap = mkDiv(''); skipWrap.append(skipInline, skipNote);
 
   body.append(
-    cardRow(fieldLabelEl('Display name', 'Name shown in the "Add token from…" dropdown when using this pattern in an action'), labelInput),
-    cardRow(fieldLabelEl('Variable name', 'The name you\'ll reference in action fields as {variableName}'), idInput),
-    cardRow(fieldLabelEl('Extract from', 'Which part of the PR context to read the value from'), sourceSel),
-    cardRow(fieldLabelEl('Match pattern', 'Optional regex — capture group 1 becomes the token value. Leave blank to use the full source text'), regexInput),
+    cardRow(fieldLabelEl('Variable name', 'The identifier used as {variableName} in action fields'), idInput),
+    cardRow(fieldLabelEl('Extract from', 'Where to read this variable\'s value from — choose a PR field or the comment body'), sourceSel),
+    cardRow(fieldLabelEl('Match pattern', 'Optional regex to extract a specific part of the source. Capture group 1 becomes the value; leave blank to use the full source'), regexInput),
     regexNote,
-    cardRow(fieldLabelEl('Fallback value', 'Used when the pattern doesn\'t match or the source is empty'), defaultInput),
-    cardRowTop(fieldLabelEl('Ignore if value is', 'Skip triggering an action for this match if the extracted value equals any of these entries'), skipWrap),
+    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
+    cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
   );
   card.append(body);
 
   card._read = () => ({
     id:      idInput.value.trim(),
-    label:   labelInput.value.trim(),
+    label:   name.value.trim(),
     source:  sourceSel.value,
     regex:   regexInput.value.trim(),
     default: defaultInput.value.trim(),
@@ -657,6 +938,8 @@ function buildFeedbackSection(initFeedback, { isComment = false } = {}) {
   // Redirect select
   const redirectSel = document.createElement('select');
   redirectSel.className = 'field-select';
+  redirectSel.style.width = 'auto';
+  redirectSel.style.justifySelf = 'start';
   const REDIRECT_OPTS = [
     ['none',           'Do nothing'],
     ['comment',        'Go to posted comment'],
@@ -671,17 +954,17 @@ function buildFeedbackSection(initFeedback, { isComment = false } = {}) {
   redirectSel.value = fb.success?.redirect ?? 'none';
 
   const note = mkEl('p', 'sub-note', '');
-  note.innerHTML = '<code>{error}</code> = API error' + (isComment ? ', <code>{count}</code> = rows triggered' : '') + '. Empty fields use defaults.';
+  note.innerHTML = '<code>{error}</code> = API error message' + (isComment ? '; <code>{count}</code> = rows triggered' : '') + '. Blank fields use defaults.';
 
   const body = mkDiv('feedback-section-body');
   body.append(
     mkEl('p', 'feedback-subsection-title', 'Label & Toast'),
-    cardRow(fieldLabelEl('Loading label', 'Text shown on the button while the action is in progress'), pendingInput),
-    cardRowTop(fieldLabelEl('Success', 'Label: updates the button text on success. Toast: shows a popup notification — leave blank to hide it'), successPair),
-    cardRowTop(fieldLabelEl('Failure', 'Label: updates button text on failure. Toast: shows the error notification. Use {error} to include the API error message'), failurePair),
+    cardRow(fieldLabelEl('Loading label', 'Button text while the action is running (e.g. ⏳ Deploying…)'), pendingInput),
+    cardRowTop(fieldLabelEl('Success', 'Label: button text after a successful action. Toast: bottom-right notification (leave blank to suppress)'), successPair),
+    cardRowTop(fieldLabelEl('Failure', 'Label: button text after a failed action. Toast: error notification shown. Use {error} for the API error message'), failurePair),
     note,
     mkEl('p', 'feedback-subsection-title', 'Others'),
-    cardRow(fieldLabelEl('After success, go to', 'Automatically navigate to another page in the same tab after a successful action'), redirectSel),
+    cardRow(fieldLabelEl('After success, go to', 'URL to open in the current tab after a successful action — useful for redirecting to a deploy log or PR list. Supports {placeholders}'), redirectSel),
   );
 
   const chevron = mkEl('span', 'feedback-chevron', '▾');
@@ -712,32 +995,6 @@ function buildFeedbackSection(initFeedback, { isComment = false } = {}) {
 
 // ── Action card builders ──────────────────────────────────────────────────────
 
-function randomActionName() {
-  const NAMES = [
-    'Alpha Automator','Auto Commenter','Capsule Deployer','Bravo Broadcast','Slack Spammer',
-    'The Akatsuki Ping','Charlie Commander','Bug Broadcaster','Survey Scout','Delta Dispatcher',
-    'Script Dispatch','Section 9 Security','Echo Event','Webhook Wizard','Black Knight Build',
-    'Foxtrot Fire','Pipeline Panic','Jujutsu Judgment','Golf Gatekeeper','Conflict Creator',
-    'Gotei 13 Guard','Hotel Host','Push Protocol','Straw Hat Sail','India Igniter',
-    'Action Alert','Phantom Ping','Juliet Jumper','Blade Runner','NERV Launch',
-    'Kilo Kickstart','Logic Trigger','Night Raid Drop','Lima Launcher','Thread Trigger',
-    'Odd Jobs Courier','Mike Messenger','Deployment Drone','S-Class Strike','November Notifier',
-    'Wave Weaver','Demon Slayer Slash','Oscar Orchestrator','Binary Blast','Ghoul Gossip',
-    'Papa Publisher','JSON Jetpack','Gurren Lagann Pierce','Quebec Queuer','Chatty Bot',
-    'Bebop Flyby','Romeo Router','Root Runner','Hunter Exam','Sierra Shipper',
-    'Core Commander','Overlord Order','Tango Targeter','Data Dump','Agency Agent',
-    'Uniform Uplink','Localhost Liftoff','Blue Lock Striker','Victor Valve','Release Rebel',
-    'Sharingan Spy','Whiskey Webhook','Garbage Disposal','Otaku Operator','X-Ray Examiner',
-    'Geass Command','Script Scraper','Yankee Yalper','One Punch Push','Alchemist Transmute',
-    'Zulu Zenith','Shinigami Slash','Hokage Herald','Apex Activator','Steins;Gate Diver',
-    'Delta Driver','Titan Trample','Hacker Hook','Charlie Compiler','Maverick Monitor',
-    'Zodiac Zero','Echo Enforcer','Iron Ship','Saiyan Surge','Bravo Bot',
-    'Blackout Blast','Ninja Notice','Foxtrot Firewall','Phoenix Phoenix','Tango Talker',
-    'Whiskey Warden','Raptor Run','Buggy Bomb','Omega Output','Infinite Tsukuyomi Deploy',
-  ];
-  return NAMES[Math.floor(Math.random() * NAMES.length)];
-}
-
 function randomActionColor() {
   const h = Math.random();
   const s = 0.65, l = 0.42;
@@ -757,13 +1014,74 @@ function randomActionColor() {
 
 const ACTION_TEMPLATE = () => ({
   trigger:    'prHeader',
-  label:      randomActionName(),
+  label:      'Set me up!',
   color:      randomActionColor(),
   filter:     { hideOnStates: [], authors: [] },
   tokens:     [],
   onMultiple: 'all',
   action:     { type: 'comment', comment: '' },
 });
+
+// ── Card name / color edit popup ─────────────────────────────────────────────
+
+const cardEditPopup = (() => {
+  const popup = mkDiv('card-edit-popup');
+  popup.hidden = true;
+  document.body.append(popup);
+
+  let currentAnchor = null;
+
+  const close = () => { popup.hidden = true; currentAnchor = null; };
+
+  document.addEventListener('mousedown', e => {
+    if (!popup.hidden && !popup.contains(e.target) && !e.target.closest('.card-edit-btn')) close();
+  }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !popup.hidden) close(); });
+
+  return {
+    open(anchor, fields) {
+      if (currentAnchor === anchor) { close(); return; }
+      currentAnchor = anchor;
+      popup.innerHTML = '';
+
+      for (const { label, input, type = 'text' } of fields) {
+        const row = mkDiv('card-edit-popup-row');
+        const lbl = mkEl('label', 'card-edit-popup-label', label);
+        const inp = document.createElement('input');
+        inp.type = type;
+        inp.value = input.value;
+        inp.className = type === 'color' ? 'card-edit-popup-color' : 'card-edit-popup-input';
+        inp.addEventListener('input', () => {
+          input.value = inp.value;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        row.append(lbl, inp);
+        popup.append(row);
+      }
+
+      popup.hidden = false;
+      const rect = anchor.getBoundingClientRect();
+      const GAP  = 6;
+      let top  = rect.bottom + GAP;
+      let left = rect.left;
+      if (top + popup.offsetHeight > window.innerHeight - 8) top = rect.top - popup.offsetHeight - GAP;
+      left = Math.max(8, Math.min(left, window.innerWidth - popup.offsetWidth - 8));
+      popup.style.top  = top  + 'px';
+      popup.style.left = left + 'px';
+
+      popup.querySelector('input[type="text"]')?.select();
+    },
+    close,
+  };
+})();
+
+const PENCIL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/></svg>';
+
+function makePencilBtn() {
+  const btn = mkEl('span', 'card-edit-btn');
+  btn.innerHTML = PENCIL_SVG;
+  return btn;
+}
 
 function makeActionCardShell(label, color, { draggable = true, expanded = false } = {}) {
   const card = mkDiv(expanded ? 'deploy-card' : 'deploy-card collapsed');
@@ -774,21 +1092,22 @@ function makeActionCardShell(label, color, { draggable = true, expanded = false 
   const name = document.createElement('input');
   name.type = 'text'; name.className = 'deploy-card-name';
   name.value = label || ''; name.placeholder = 'Action';
+  const pencil = makePencilBtn();
   const nameWrap = mkDiv('deploy-card-name-wrap');
-  nameWrap.appendChild(name);
+  nameWrap.append(name, pencil);
   const rm = mkSmallBtn('× Remove', 'btn btn-danger btn-xs', () => card.remove());
   header.append(chevron, dot, nameWrap, rm);
   card.append(header);
   header.addEventListener('click', e => {
-    if (e.target.closest('button, input, select, label')) return;
+    if (e.target.closest('button, input, select, label, .card-edit-btn')) return;
     card.classList.toggle('collapsed');
   });
-  return { card, header, dot, name };
+  return { card, header, dot, name, pencil };
 }
 
 function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) {
   const initTrigger = fixedTrigger ?? action.trigger ?? 'prHeader';
-  const { card, header, dot, name } = makeActionCardShell(action.label ?? 'Action', action.color ?? '#c95f0a', { expanded });
+  const { card, header, dot, name, pencil } = makeActionCardShell(action.label ?? 'Action', action.color ?? '#c95f0a', { expanded });
   const dupBtn = mkSmallBtn('Duplicate', 'btn btn-secondary btn-xs', () => { const c = card._read(); const dup = makeActionCard({ ...c, label: c.label + ' Copy' }, { fixedTrigger, expanded: true }); card.after(dup); dup.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); flashHighlight(dup); });
   header.lastElementChild.before(dupBtn);
   const body = mkDiv('deploy-card-body');
@@ -812,6 +1131,7 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   name.dataset.field = 'label';
 
   // Color — picker overlaid on header dot
+
   const colorInput = document.createElement('input');
   colorInput.type = 'color';
   colorInput.value = action.color ?? '#c95f0a';
@@ -821,19 +1141,28 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   dot.appendChild(colorInput);
   colorInput.addEventListener('input', () => { dot.style.background = colorInput.value; });
 
+  pencil.addEventListener('click', e => {
+    e.stopPropagation();
+    cardEditPopup.open(pencil, [
+      { label: 'Button label', input: name },
+      { label: 'Color', input: colorInput, type: 'color' },
+    ]);
+  });
+
   // Filter: hideOnStates
   const PR_STATES = ['open', 'draft', 'merged', 'closed'];
   const hideChecks = PR_STATES.map(s => mkCheckbox((action.filter?.hideOnStates ?? []).includes(s)));
   const hideGroup = mkDiv('checkbox-group');
-  hideChecks.forEach((cb, i) => hideGroup.append(mkCheckboxLabel(cb, PR_STATES[i])));
+  hideChecks.forEach((cb, i) => hideGroup.append(mkCheckboxLabel(cb, PR_STATES[i][0].toUpperCase() + PR_STATES[i].slice(1))));
 
   // Filter: authors (comment trigger only — row hidden when trigger = prHeader)
   const afList = mkDiv('tag-list');
   populateTagList(afList, action.filter?.authors);
   const afAdd  = mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => afList.append(makeTagRow('')));
   const afNote = mkEl('p', 'sub-note', 'Usernames or regex. Empty = show for all authors.');
-  const afWrap = mkDiv(''); afWrap.append(afList, afAdd, afNote);
-  const afRow  = cardRowTop(fieldLabelEl('Restrict to authors', 'Only show this button for PRs or comments from these GitHub usernames or regex patterns. Leave empty to show for all'), afWrap);
+  const afInline = mkDiv('tag-inline-row'); afInline.append(afList, afAdd);
+  const afWrap = mkDiv(''); afWrap.append(afInline, afNote);
+  const afRow  = cardRowTop(fieldLabelEl('Restrict to authors', 'Only show this button to PRs or comments by these GitHub usernames (exact match or regex). Leave empty to show for everyone'), afWrap);
 
   // onMultiple
   const omName  = 'om-' + Math.random().toString(36).slice(2);
@@ -841,7 +1170,7 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const omAll   = document.createElement('input'); omAll.type   = 'radio'; omAll.name   = omName; omAll.value   = 'all';
   if ((action.onMultiple ?? 'all') === 'first') omFirst.checked = true; else omAll.checked = true;
   const omGroup = mkDiv('on-multiple-group');
-  omGroup.append(mkCheckboxLabel(omAll, 'All matches — trigger once per extracted row'), mkCheckboxLabel(omFirst, 'First match only'));
+  omGroup.append(mkCheckboxLabel(omAll, 'All matches'), mkCheckboxLabel(omFirst, 'First match only'));
 
   // Tokens
   const allowCommentSources = initTrigger === 'comment';
@@ -852,18 +1181,58 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const tokensWrap  = mkDiv(''); tokensWrap.append(tokenList, addTokenSel, tokensNote);
 
   const actionForm = buildActionFormEl(action.action);
-  const hideRow = cardRow(fieldLabelEl('Hide button when PR is', 'Don\'t show this button when the PR is in any of these states'), hideGroup);
+
+  // Target override — lets the action run on a different repo/PR/ref than the current context
+  const tgt = action.target ?? {};
+  const hasTarget = !!(tgt.repo || tgt.ref || tgt.prNumber);
+  const targetRepoInput = mkInput(tgt.repo     ?? '', false, 'owner/repo — blank = this PR\'s repo');
+  const targetRefInput  = mkInput(tgt.ref      ?? '', false, 'branch, tag or SHA — blank = default/PR branch');
+  const targetPrInput   = mkInput(tgt.prNumber ?? '', false, 'PR number — blank = this PR');
+
+  const targetRepoRow = cardRow(fieldLabelEl('Target repo', 'Run this action on a different repo than the current one. Supports {placeholders}. Leave blank to use this PR\'s repo'), targetRepoInput);
+  const targetRefRow  = cardRow(fieldLabelEl('Target ref',  'Branch, tag, or SHA to dispatch against. Supports {placeholders}. Leave blank to use the default branch (workflow) or PR branch (deployment)'), targetRefInput);
+  const targetPrRow   = cardRow(fieldLabelEl('Target PR',   'Post the comment on a specific PR number. Supports {placeholders}. Leave blank to use this PR'), targetPrInput);
+
+  const targetBody = mkDiv('target-override-body');
+  targetBody.hidden = !hasTarget;
+  targetBody.append(targetRepoRow, targetRefRow, targetPrRow);
+
+  const syncTargetFields = () => {
+    const t = actionForm.typeSelect.value;
+    targetRefRow.hidden = t === 'comment' || t === 'repositoryDispatch';
+    targetPrRow.hidden  = t !== 'comment';
+  };
+  syncTargetFields();
+  actionForm.typeSelect.addEventListener('change', syncTargetFields);
+
+  const targetToggle = mkEl('span', 'target-override-toggle', hasTarget ? '⊖ Running outside this PR' : '⊕ Run outside this PR');
+  targetToggle.addEventListener('click', () => {
+    const expanding = targetBody.hidden;
+    targetBody.hidden = !expanding;
+    targetToggle.textContent = expanding ? '⊖ Running outside this PR' : '⊕ Run outside this PR';
+  });
+
+  const targetSection = mkDiv('target-override-section');
+  targetSection.append(targetToggle, targetBody);
+
+  const hideRow = cardRow(fieldLabelEl('Hide when PR is', 'Don\'t show this button when the PR matches any of these states'), hideGroup);
   const fbSection  = buildFeedbackSection(action.feedback, { isComment: initTrigger === 'comment' });
   const othersTitle = [...fbSection.el.querySelectorAll('.feedback-subsection-title')]
     .find(el => el.textContent === 'Others');
-  const omRow = cardRow(fieldLabelEl('If multiple matches', 'When token extraction finds multiple rows in the comment, trigger once per match (All) or only the first (First)'), omGroup);
+  const omRow = cardRow(fieldLabelEl('Multiple matches', 'When a comment contains multiple matching rows, fire for each one (All) or only the first (First match only)'), omGroup);
   othersTitle.after(omRow);
   omRow.after(afRow);
   afRow.after(hideRow);
 
+  // Stacks assignment — lives inside Additional Settings
+  const stackChips = makeStackChips(action.stacks);
+  const stacksRow  = cardRow(fieldLabelEl('Stacks', 'Nest this action inside a dropdown button. Add it to one or more stacks — it will appear in each stack\'s dropdown menu'), stackChips);
+  fbSection.el.querySelector('.feedback-section-body').prepend(stacksRow);
+
   body.append(
-    cardRowTop(fieldLabelEl('Extract values', 'Define named tokens pulled from PR context — use {tokenName} as placeholders in your action fields'), tokensWrap),
+    cardRowTop(fieldLabelEl('Variables', 'Extract named values from PR context and use them as {placeholders} in the action fields below'), tokensWrap),
     actionForm.el,
+    targetSection,
     fbSection.el,
   );
   card.append(body);
@@ -879,14 +1248,20 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
     trigger:    fixedTrigger ?? (isComment() ? 'comment' : 'prHeader'),
     label:      name.value.trim(),
     color:      colorInput.value,
+    stacks:     stackChips._read(),
     filter: {
       hideOnStates: PR_STATES.filter((s, i) => hideChecks[i].checked),
       authors:      readTagList(afList),
     },
-    tokens:     [...tokenList.querySelectorAll('.token-card')].map(c => c._read()),
+    tokens:     [...tokenList.querySelectorAll('.deploy-card')].map(c => c._read()),
     onMultiple: omFirst.checked ? 'first' : 'all',
     action:     actionForm.read(),
     feedback:   fbSection.read(),
+    target: {
+      repo:     targetRepoInput.value.trim(),
+      ref:      targetRefInput.value.trim(),
+      prNumber: targetPrInput.value.trim(),
+    },
   });
   return card;
 }
@@ -897,11 +1272,11 @@ function buildActionFormEl(initAction) {
   const action = initAction ?? { type: 'comment', comment: '' };
   const wrap = mkDiv('');
 
-  const sel = document.createElement('select'); sel.className = 'field-select';
+  const sel = document.createElement('select'); sel.className = 'field-select'; sel.style.width = 'auto'; sel.style.justifySelf = 'start';
   [['comment','Post PR comment'],['workflow','Dispatch workflow'],['repositoryDispatch','Repository dispatch'],['deployment','Create deployment']]
     .forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; sel.append(o); });
   sel.value = action.type ?? 'comment';
-  wrap.append(cardRow(fieldLabelEl('What to do', 'Choose the type of GitHub action to trigger when this button is clicked'), sel));
+  wrap.append(cardRow(fieldLabelEl('Action type', 'What happens when this button is clicked'), sel));
 
   // comment
   const commentRules = makeConditionalRules(
@@ -910,7 +1285,7 @@ function buildActionFormEl(initAction) {
   );
   const commentSub = mkDiv('action-subform');
   commentSub.dataset.field = 'action-comment';
-  commentSub.append(cardRowTop(fieldLabelEl('Comment body', 'The text of the GitHub comment to post. Use {placeholders} for dynamic values'), commentRules));
+  commentSub.append(cardRowTop(fieldLabelEl('Comment body', 'Text of the GitHub comment to post. Supports {placeholders} for dynamic values'), commentRules));
 
   // workflow — normalize old `files: [{if, file}]` to new `file: string | [{if?, value}]`
   const initFile = (() => {
@@ -924,11 +1299,11 @@ function buildActionFormEl(initAction) {
   if (action.type === 'workflow') populateKvList(wfList, action.inputs);
   const wfAdd = mkSmallBtn('+ Add Input', 'btn btn-secondary btn-xs', () => wfList.append(makeKvRow('', '')));
   const wfTokenNote = mkEl('p', 'sub-note', '');
-  wfTokenNote.innerHTML = 'Fixed: <code>{prTitle}</code> <code>{branchName}</code> <code>{prNumber}</code> <code>{repo}</code> <code>{commentAuthor}</code> — plus any tokens defined above.';
+  wfTokenNote.innerHTML = 'Fixed: <code>{prTitle}</code> <code>{branchName}</code> <code>{prNumber}</code> <code>{repo}</code> <code>{commentAuthor}</code> — plus any variables extracted above.';
   const wfInputsWrap = mkDiv(''); wfInputsWrap.append(wfList, wfAdd, wfTokenNote);
   const workflowSub = mkDiv('action-subform');
   workflowSub.dataset.field = 'action-file';
-  workflowSub.append(cardRowTop(fieldLabelEl('Workflow filename', 'The .yml filename in .github/workflows/ to trigger (e.g. deploy.yml). Supports {placeholders} and conditional routing'), fileRules), cardRowTop(fieldLabelEl('Workflow inputs', 'Key-value pairs passed as workflow_dispatch inputs. Use {placeholders} in values'), wfInputsWrap));
+  workflowSub.append(cardRowTop(fieldLabelEl('Workflow file', 'Filename inside .github/workflows/ to trigger (e.g. deploy.yml). Supports {placeholders} and conditional routing'), fileRules), cardRowTop(fieldLabelEl('Workflow inputs', 'Key-value pairs passed as workflow_dispatch inputs. Values support {placeholders}'), wfInputsWrap));
 
   // repositoryDispatch
   const rdEventRules = makeConditionalRules(
@@ -941,7 +1316,7 @@ function buildActionFormEl(initAction) {
   const rdWrap = mkDiv(''); rdWrap.append(rdList, rdAdd);
   const rdSub = mkDiv('action-subform');
   rdSub.dataset.field = 'action-eventType';
-  rdSub.append(cardRowTop(fieldLabelEl('Repository event', 'The event_type string sent with the repository_dispatch. Supports {placeholders} and conditional routing'), rdEventRules), cardRowTop(fieldLabelEl('Event payload', 'Key-value pairs sent in the client_payload object'), rdWrap));
+  rdSub.append(cardRowTop(fieldLabelEl('Event type', 'The event_type string sent with the repository_dispatch. Supports {placeholders} and conditional routing'), rdEventRules), cardRowTop(fieldLabelEl('Event payload', 'Key-value pairs sent inside client_payload. Values support {placeholders}'), rdWrap));
 
   // deployment
   const depEnvRules = makeConditionalRules(
@@ -954,7 +1329,7 @@ function buildActionFormEl(initAction) {
   const depWrap = mkDiv(''); depWrap.append(depList, depAdd);
   const depSub = mkDiv('action-subform');
   depSub.dataset.field = 'action-environment';
-  depSub.append(cardRowTop(fieldLabelEl('Target environment', 'Deployment environment name (e.g. staging, production). Supports {placeholders} and conditional routing'), depEnvRules), cardRowTop(fieldLabelEl('Deploy payload', 'Additional key-value pairs included in the deployment payload'), depWrap));
+  depSub.append(cardRowTop(fieldLabelEl('Environment', 'Deployment environment name (e.g. staging, production). Supports {placeholders} and conditional routing'), depEnvRules), cardRowTop(fieldLabelEl('Deployment payload', 'Extra key-value pairs included in the deployment payload. Values support {placeholders}'), depWrap));
 
   const subs = { comment: commentSub, workflow: workflowSub, repositoryDispatch: rdSub, deployment: depSub };
   const sync = () => { for (const [t, s] of Object.entries(subs)) s.hidden = t !== sel.value; };
@@ -963,6 +1338,7 @@ function buildActionFormEl(initAction) {
 
   return {
     el: wrap,
+    typeSelect: sel,
     read() {
       const t = sel.value;
       if (t === 'comment')            return { type: 'comment',            comment:     commentRules._read()  };
@@ -978,10 +1354,9 @@ function buildPrActionsSectionEl(initActions) {
   const list = mkDiv('');
   for (const a of initActions ?? []) list.append(makeActionCard(a, { fixedTrigger: 'prHeader' }));
   enableDragSort(list, '.deploy-card');
-  const addBtn1 = mkSmallBtn('+ Add Action', 'btn btn-secondary btn-xs', () => appendAndScroll(list, makeActionCard(ACTION_TEMPLATE(), { fixedTrigger: 'prHeader', expanded: true })));
-  const addWrap1 = mkDiv('tab-actions'); addWrap1.style.marginBottom = '4px'; addWrap1.append(addBtn1);
-  wrap.append(addWrap1, list);
-  return { el: wrap, listEl: list, read: () => [...list.querySelectorAll('.deploy-card')].map(c => c._read()) };
+  const addBtn = mkSmallBtn('+ Add Action', 'btn btn-secondary btn-xs', () => appendAndScroll(list, makeActionCard(ACTION_TEMPLATE(), { fixedTrigger: 'prHeader', expanded: true })));
+  wrap.append(list);
+  return { el: wrap, listEl: list, addBtn, read: () => [...list.querySelectorAll('.deploy-card')].map(c => c._read()) };
 }
 
 function buildCommentActionsSectionEl(initActions) {
@@ -990,10 +1365,9 @@ function buildCommentActionsSectionEl(initActions) {
   const caTemplate = () => ({ ...ACTION_TEMPLATE(), trigger: 'comment', color: randomActionColor() });
   for (const a of initActions ?? []) list.append(makeActionCard(a, { fixedTrigger: 'comment' }));
   enableDragSort(list, '.deploy-card');
-  const addBtn2 = mkSmallBtn('+ Add Action', 'btn btn-secondary btn-xs', () => appendAndScroll(list, makeActionCard(caTemplate(), { fixedTrigger: 'comment', expanded: true })));
-  const addWrap2 = mkDiv('tab-actions'); addWrap2.style.marginBottom = '4px'; addWrap2.append(addBtn2);
-  wrap.append(addWrap2, list);
-  return { el: wrap, listEl: list, read: () => [...list.querySelectorAll('.deploy-card')].map(c => c._read()) };
+  const addBtn = mkSmallBtn('+ Add Action', 'btn btn-secondary btn-xs', () => appendAndScroll(list, makeActionCard(caTemplate(), { fixedTrigger: 'comment', expanded: true })));
+  wrap.append(list);
+  return { el: wrap, listEl: list, addBtn, read: () => [...list.querySelectorAll('.deploy-card')].map(c => c._read()) };
 }
 
 
@@ -1003,37 +1377,52 @@ function buildCommentActionsSectionEl(initActions) {
 function makeOverrideSection(title, isActive, buildFn, { initMode = 'replace', fillFromParent } = {}) {
   const section = mkDiv('override-section');
 
-  const headerLabel = document.createElement('label');
-  headerLabel.className = 'override-section-header';
-  const toggle = mkCheckbox(isActive); toggle.className = 'override-toggle';
-  const titleEl = mkEl('span', '', title);
-  const badge = mkEl('span', 'inherited-badge', 'inherited'); badge.hidden = isActive;
-  headerLabel.append(toggle, titleEl, badge);
-
-  const body = buildFn();
+  const body    = buildFn();
   const bodyWrap = mkDiv('override-section-body');
 
-  let modeReplace, modeExtend;
+  const headerLabel = document.createElement('label');
+  headerLabel.className = 'override-section-header';
+  const toggle  = mkCheckbox(isActive); toggle.className = 'override-toggle';
+  const titleEl = mkEl('span', '', title);
+  headerLabel.append(toggle, titleEl);
+
+  // Right-side group — always present; shows 'inherited' or override controls
+  const headerRight = mkDiv('override-header-right');
+  const badge = mkEl('span', 'inherited-badge', 'inherited');
+  badge.style.display = isActive ? 'none' : '';
+  headerRight.append(badge);
+
+  if (body.addBtn) {
+    body.addBtn.style.display = isActive ? '' : 'none';
+    headerRight.append(body.addBtn);
+  }
+  headerLabel.append(headerRight);
+
+  let modeReplace, modeExtend, modeGroup = null;
   if (fillFromParent) {
-    const modeName = 'mode-' + Math.random().toString(36).slice(2);
-    modeReplace = document.createElement('input'); modeReplace.type = 'radio'; modeReplace.name = modeName; modeReplace.value = 'replace';
-    modeExtend  = document.createElement('input'); modeExtend.type  = 'radio'; modeExtend.name  = modeName; modeExtend.value = 'extend';
-    if (initMode === 'extend') modeExtend.checked = true; else modeReplace.checked = true;
+    modeReplace = document.createElement('input'); modeReplace.type = 'hidden'; modeReplace.value = 'replace';
+    modeExtend  = document.createElement('input'); modeExtend.type  = 'hidden'; modeExtend.value  = 'extend';
+    let isExtend = initMode === 'extend';
 
-    const modeRow = mkDiv('override-mode-row');
-    modeRow.append(mkCheckboxLabel(modeReplace, 'Replace inherited'), mkCheckboxLabel(modeExtend, 'Extend inherited'));
+    const modeBadge = mkEl('span', 'mode-badge', '');
+    const infoI     = mkEl('i', 'field-hint', 'i');
+    infoI.dataset.hint = 'Replace: overrides the full action list — parent actions are discarded.\nExtend: appends these actions after the parent\'s — only configure the extras here.';
+    infoI.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
 
-    const modeNote = mkEl('p', 'sub-note', '');
-    const updateModeNote = () => {
-      modeNote.textContent = modeExtend.checked
-        ? 'Adds these actions after the parent\'s — only configure the extras here.'
-        : 'Overrides the full list — parent actions are discarded.';
+    modeGroup = mkDiv('override-mode-group');
+    modeGroup.style.display = isActive ? '' : 'none';
+    modeGroup.append(modeBadge, infoI);
+    headerRight.append(modeGroup);
+
+    const syncModeUI = () => {
+      modeExtend.checked    = isExtend;
+      modeReplace.checked   = !isExtend;
+      modeBadge.textContent = isExtend ? 'extend' : 'replace';
+      modeBadge.title       = isExtend ? 'Click to replace instead' : 'Click to extend instead';
     };
-    modeReplace.addEventListener('change', updateModeNote);
-    modeExtend.addEventListener('change', updateModeNote);
-    updateModeNote();
+    syncModeUI();
 
-    bodyWrap.append(modeRow, modeNote);
+    modeBadge.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); isExtend = !isExtend; syncModeUI(); });
   }
 
   bodyWrap.append(body.el);
@@ -1041,8 +1430,10 @@ function makeOverrideSection(title, isActive, buildFn, { initMode = 'replace', f
 
   let firstEnable = !isActive;
   toggle.addEventListener('change', () => {
-    bodyWrap.hidden = !toggle.checked;
-    badge.hidden = toggle.checked;
+    bodyWrap.hidden            = !toggle.checked;
+    badge.style.display        = toggle.checked ? 'none' : '';
+    if (body.addBtn) body.addBtn.style.display = toggle.checked ? '' : 'none';
+    if (modeGroup)   modeGroup.style.display   = toggle.checked ? '' : 'none';
     if (toggle.checked && firstEnable) {
       firstEnable = false;
       if (fillFromParent && !modeExtend?.checked) fillFromParent(body.listEl, false);
@@ -1094,8 +1485,13 @@ function makeGroupCard(groupData, { expanded = false } = {}) {
   const groupHandle = mkEl('span', 'drag-handle', '⠿'); groupHandle.draggable = true;
   const nameInput = mkInput(groupData?.name ?? '', false, 'Group name');
   nameInput.className = 'override-card-repo-name';
+  const groupPencil = makePencilBtn();
   const nameWrap = mkDiv('override-card-name-wrap');
-  nameWrap.appendChild(nameInput);
+  nameWrap.append(nameInput, groupPencil);
+  groupPencil.addEventListener('click', e => {
+    e.stopPropagation();
+    cardEditPopup.open(groupPencil, [{ label: 'Group name', input: nameInput }]);
+  });
   const groupDupBtn = mkSmallBtn('Duplicate', 'btn btn-secondary btn-xs', () => {
     const { name, repos, config } = card._read();
     const dup = makeGroupCard({ name: name + ' Copy', repos, config }, { expanded: true });
@@ -1108,8 +1504,10 @@ function makeGroupCard(groupData, { expanded = false } = {}) {
 
   const repoTagList = mkDiv('tag-list');
   populateTagList(repoTagList, groupData?.repos ?? []);
+  const reposInline = mkDiv('tag-inline-row');
+  reposInline.append(repoTagList, mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => repoTagList.append(makeTagRow(''))));
   const reposWrap = mkDiv('');
-  reposWrap.append(repoTagList, mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => repoTagList.append(makeTagRow(''))), mkEl('p', 'sub-note', 'Exact name or regex (e.g. myorg/js-.*)'));
+  reposWrap.append(reposInline, mkEl('p', 'sub-note', 'Exact name or regex (e.g. myorg/js-.*)'));
   const reposSection = mkDiv('override-card-repos');
   reposSection.append(cardRowTop('Match repos', reposWrap));
 
@@ -1162,8 +1560,13 @@ function makeRepoCard(repoName, repoConfig, { expanded = false } = {}) {
   repoChevron.addEventListener('click', () => card.classList.toggle('collapsed'));
   const nameInput = mkInput(repoName ?? '', false, 'owner/repo-name');
   nameInput.className = 'override-card-repo-name field-input--mono';
+  const repoPencil = makePencilBtn();
   const nameWrap = mkDiv('override-card-name-wrap');
-  nameWrap.appendChild(nameInput);
+  nameWrap.append(nameInput, repoPencil);
+  repoPencil.addEventListener('click', e => {
+    e.stopPropagation();
+    cardEditPopup.open(repoPencil, [{ label: 'Repo name', input: nameInput }]);
+  });
   const repoDupBtn = mkSmallBtn('Duplicate', 'btn btn-secondary btn-xs', () => {
     const { name, config } = card._read();
     const dup = makeRepoCard(name + ' Copy', config, { expanded: true });
@@ -1253,6 +1656,8 @@ function appendAndScroll(parent, el) {
   return el;
 }
 
+document.getElementById('add-stack-btn').addEventListener('click', () => appendAndScroll(stacksList, makeNewStack()));
+
 document.getElementById('add-pr-action-btn').addEventListener('click',      () => appendAndScroll(prActionsList, makeActionCard(ACTION_TEMPLATE(), { fixedTrigger: 'prHeader', expanded: true })));
 document.getElementById('add-comment-action-btn').addEventListener('click', () => appendAndScroll(commentActionsList, makeActionCard({ ...ACTION_TEMPLATE(), trigger: 'comment', color: randomActionColor() }, { fixedTrigger: 'comment', expanded: true })));
 document.getElementById('add-token-preset-btn').addEventListener('click',   () => appendAndScroll(tokenPresetsList, makeTokenPresetCard({}, { expanded: true })));
@@ -1289,6 +1694,7 @@ document.getElementById('add-group-btn').addEventListener('click', () => { appen
 document.getElementById('add-repo-btn').addEventListener('click',  () => { appendAndScroll(reposList, makeRepoCard('', {}, { expanded: true })); updateTabCounts(); });
 
 // Enable drag sort on all static list containers (event delegation — works for dynamically added items)
+enableDragSort(stacksList,         '.deploy-card');
 enableDragSort(prActionsList,      '.deploy-card');
 enableDragSort(commentActionsList, '.deploy-card');
 enableDragSort(groupsList,         '.override-card');
@@ -1301,6 +1707,16 @@ function configToForm(config) {
   const modeRadio = document.querySelector(`input[name="repo-filter-mode"][value="${filter.mode}"]`);
   if (modeRadio) modeRadio.checked = true;
   populateTagList(document.getElementById('repo-filter-list'), filter.patterns);
+
+  // Stacks (must be populated before action cards so chips can resolve labels)
+  stacksList.innerHTML = '';
+  for (const s of config.stacks ?? []) stacksList.append(makeStackCard(s));
+
+  // Dropdown thresholds
+  document.getElementById('pr-dropdown-threshold').value      = config.prDropdownThreshold      ?? 3;
+  document.getElementById('comment-dropdown-threshold').value = config.commentDropdownThreshold  ?? 4;
+  document.getElementById('pr-dropdown-label').value          = config.prDropdownLabel          ?? '';
+  document.getElementById('comment-dropdown-label').value     = config.commentDropdownLabel     ?? '';
 
   // Split actions by trigger into the two visual sections
   const prActions      = (config.actions ?? []).filter(a => a.trigger !== 'comment');
@@ -1336,6 +1752,11 @@ function formToGlobalConfig() {
       mode:     repoFilterMode,
       patterns: readTagList(document.getElementById('repo-filter-list')),
     },
+    stacks:               [...stacksList.querySelectorAll('.deploy-card')].map(c => c._read()),
+    prDropdownThreshold:      (v => isNaN(v) ? 3 : v)(parseInt(document.getElementById('pr-dropdown-threshold').value,      10)),
+    commentDropdownThreshold: (v => isNaN(v) ? 4 : v)(parseInt(document.getElementById('comment-dropdown-threshold').value,  10)),
+    prDropdownLabel:          document.getElementById('pr-dropdown-label').value.trim()      || undefined,
+    commentDropdownLabel:     document.getElementById('comment-dropdown-label').value.trim() || undefined,
     actions:      [...prActions, ...commentActions],
     tokenPresets: [...tokenPresetsList.querySelectorAll('.deploy-card')].map(c => c._read()),
   };
@@ -1459,6 +1880,13 @@ function validateConfig(config) {
   const actions  = config.actions      ?? [];
   const groups   = config.groups       ?? [];
   const patterns = config.repoFilter?.patterns ?? [];
+
+  if ((config.prDropdownThreshold ?? 3) < 1)      return { message: 'PR header dropdown threshold must be at least 1.',       tab: 'global' };
+  if ((config.commentDropdownThreshold ?? 4) < 1)  return { message: 'Comment buttons dropdown threshold must be at least 1.', tab: 'global' };
+
+  for (let i = 0; i < (config.stacks ?? []).length; i++) {
+    if (!config.stacks[i].label?.trim()) return { message: `Stack ${i + 1}: name cannot be empty.`, tab: 'global' };
+  }
 
   for (let i = 0; i < presets.length; i++) {
     const p = presets[i];

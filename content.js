@@ -55,35 +55,35 @@ function handleRedirect(redirect, res, repo) {
   if (dest) setTimeout(() => { location.href = dest; }, 500);
 }
 
-// ── User-input prompt — {ask:"Label"} tokens ─────────────────────────────────
-// Scan a value (string or conditional array) for {ask:"..."} patterns.
+// ── User-input prompt — {input:"Label"} tokens ────────────────────────────────
+// Scan a value (string or conditional array) for {input:"..."} patterns.
 
-function scanAskLabels(value) {
-  const re = /\{ask:"([^"]+)"\}/g;
+function scanInputLabels(value) {
+  const re = /\{input:"([^"]+)"\}/g;
   const labels = [];
   if (typeof value === 'string') {
     let m; while ((m = re.exec(value)) !== null) labels.push(m[1]);
   } else if (Array.isArray(value)) {
-    for (const rule of value) labels.push(...scanAskLabels(rule.value ?? ''));
+    for (const rule of value) labels.push(...scanInputLabels(rule.value ?? ''));
   }
   return labels;
 }
 
-function collectAskLabels(action) {
+function collectInputLabels(action) {
   const seen = new Set();
   const add = arr => arr.forEach(l => seen.add(l));
-  add(scanAskLabels(action.comment ?? ''));
-  add(scanAskLabels(action.file ?? ''));
-  add(scanAskLabels(action.eventType ?? ''));
-  add(scanAskLabels(action.environment ?? ''));
-  for (const v of Object.values(action.inputs  ?? {})) add(scanAskLabels(v));
-  for (const v of Object.values(action.payload  ?? {})) add(scanAskLabels(v));
+  add(scanInputLabels(action.comment ?? ''));
+  add(scanInputLabels(action.file ?? ''));
+  add(scanInputLabels(action.eventType ?? ''));
+  add(scanInputLabels(action.environment ?? ''));
+  for (const v of Object.values(action.inputs  ?? {})) add(scanInputLabels(v));
+  for (const v of Object.values(action.payload  ?? {})) add(scanInputLabels(v));
   return [...seen];
 }
 
-function applyAskValues(action, values) {
+function applyInputValues(action, values) {
   const subst = s => typeof s === 'string'
-    ? s.replace(/\{ask:"([^"]+)"\}/g, (_, l) => values[l] ?? '') : s;
+    ? s.replace(/\{input:"([^"]+)"\}/g, (_, l) => values[l] ?? '') : s;
   const substConditional = v =>
     typeof v === 'string' ? subst(v) :
     Array.isArray(v) ? v.map(r => ({ ...r, value: subst(r.value ?? '') })) : v;
@@ -101,7 +101,7 @@ function applyAskValues(action, values) {
 
 // Shows a modal dialog collecting values for each label. Returns a Promise that
 // resolves with {label: value} or rejects if the user cancels.
-function showAskModal(labels) {
+function showInputModal(labels) {
   return new Promise((resolve, reject) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;';
@@ -160,6 +160,78 @@ function showAskModal(labels) {
     document.body.append(overlay);
     Object.values(inputEls)[0]?.focus();
   });
+}
+
+// An action is unconfigured when its core dispatch field is still empty.
+// comment → needs a body; workflow → needs a file; repositoryDispatch → needs an eventType.
+// deployment has sensible defaults (PR branch + 'production') so it's never blocked.
+function isActionUnconfigured(prAction) {
+  const a = prAction?.action;
+  if (!a) return true;
+  if (a.type === 'comment')            return !String(a.comment   ?? '').trim();
+  if (a.type === 'workflow')           return !String(a.file      ?? '').trim();
+  if (a.type === 'repositoryDispatch') return !String(a.eventType ?? '').trim();
+  return false;
+}
+
+
+function fetchWorkflowSchema(repo, workflowFile) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'getWorkflowInputs', repo, workflowFile }, res => {
+      if (chrome.runtime.lastError || !res?.success) { reject(); return; }
+      resolve(res.inputs);
+    });
+  });
+}
+
+// Resolves all user prompts for an action before dispatch:
+//   1. Collects explicit {input:"..."} labels from action fields
+//   2. For workflow actions with a static file path, fetches the workflow's
+//      input schema and adds any required inputs that aren't already configured
+//   3. Auto-fills optional workflow inputs that have a default value
+//   4. Shows the modal if there's anything to collect
+// Returns the fully resolved action, or throws if the user cancels.
+async function resolveActionForDispatch(action, repo) {
+  const inputLabels = collectInputLabels(action);
+  const workflowPrompts = [];
+
+  if (
+    action.type === 'workflow' &&
+    typeof action.file === 'string' &&
+    action.file.trim() &&
+    !/{/.test(action.file)
+  ) {
+    try {
+      const schema = await fetchWorkflowSchema(repo, action.file);
+      const defaults = {};
+      for (const inp of schema) {
+        const configured = (action.inputs ?? {})[inp.name];
+        const hasValue = configured != null && String(configured).trim() !== '';
+        if (hasValue) continue;
+        if (inp.required) {
+          workflowPrompts.push({ name: inp.name, label: inp.description || inp.name });
+        } else if (inp.default) {
+          defaults[inp.name] = inp.default;
+        }
+      }
+      if (Object.keys(defaults).length) {
+        action = { ...action, inputs: { ...defaults, ...(action.inputs ?? {}) } };
+      }
+    } catch { /* silently skip if schema fetch fails */ }
+  }
+
+  const allLabels = [...inputLabels, ...workflowPrompts.map(p => p.label)];
+  if (allLabels.length) {
+    const values = await showInputModal(allLabels); // throws on cancel
+    action = applyInputValues(action, values);
+    if (workflowPrompts.length) {
+      const extra = {};
+      for (const p of workflowPrompts) extra[p.name] = values[p.label] ?? '';
+      action = { ...action, inputs: { ...(action.inputs ?? {}), ...extra } };
+    }
+  }
+
+  return action;
 }
 
 // ── Config Resolution ─────────────────────────────────────────────────────────
@@ -317,6 +389,25 @@ const STYLES = `
     scroll-margin-top: 80px;
   }
 
+  /* Action dropdown menu */
+  .wd-action-menu {
+    position: fixed; z-index: 99999;
+    background: white; border: 1px solid #d0d7de;
+    border-radius: 8px; padding: 4px;
+    min-width: 160px; max-width: 240px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wd-action-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 7px 10px; border: none;
+    background: none; border-radius: 5px; cursor: pointer;
+    font-size: 12px; font-weight: 500; color: #1f2328;
+    text-align: left; white-space: nowrap;
+  }
+  .wd-action-menu-item:hover { background: #f6f8fa; }
+  .wd-action-menu-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
 
   /* Toast */
   #wd-toast-container {
@@ -405,6 +496,61 @@ function scrollToComment(commentUrl) {
   }
 }
 
+// ── Action dropdown menu ──────────────────────────────────────────────────────
+
+function openActionMenu(anchor, actions, onSelect) {
+  document.querySelector('.wd-action-menu')?.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'wd-action-menu';
+
+  for (const action of actions) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'wd-action-menu-item';
+    const dot = document.createElement('span');
+    dot.className = 'wd-action-menu-dot';
+    dot.style.background = action.color;
+    item.append(dot, document.createTextNode(action.label));
+    item.addEventListener('click', () => { menu.remove(); onSelect(action); });
+    menu.append(item);
+  }
+
+  document.body.append(menu);
+
+  const rect = anchor.getBoundingClientRect();
+  const mH = menu.offsetHeight, mW = menu.offsetWidth;
+  let top  = rect.bottom + 4;
+  if (top + mH > window.innerHeight - 8) top = rect.top - mH - 4;
+  menu.style.top  = Math.max(8, top) + 'px';
+  menu.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - mW - 8)) + 'px';
+
+  const dismiss = e => {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', dismiss, true); }
+  };
+  setTimeout(() => document.addEventListener('mousedown', dismiss, true), 0);
+}
+
+// ── Stack + individual grouping ───────────────────────────────────────────────
+
+function groupIntoButtonGroups(actions, stacksDef) {
+  const groups = [];
+  const definedIds = new Set((stacksDef ?? []).map(s => s.id));
+
+  for (const stack of stacksDef ?? []) {
+    const stackActions = actions.filter(a => (a.stacks ?? []).includes(stack.id));
+    if (stackActions.length === 0) continue;
+    groups.push({ type: 'stack', stack, actions: stackActions });
+  }
+
+  for (const action of actions) {
+    const inAnyStack = (action.stacks ?? []).some(id => definedIds.has(id));
+    if (!inAnyStack) groups.push({ type: 'individual', action });
+  }
+
+  return groups;
+}
+
 // ── PR Action Buttons (PR header) ─────────────────────────────────────────────
 
 function parsePrFromUrl() {
@@ -433,6 +579,9 @@ function attachPrActionButtons() {
 
   if (visibleActions.length === 0) return;
 
+  const prThreshold  = CONFIG.prDropdownThreshold ?? 3;
+  const buttonGroups = groupIntoButtonGroups(visibleActions, CONFIG.stacks ?? []);
+
   const containers = [
     ...document.querySelectorAll('[data-component="PH_Actions"]'),
     ...document.querySelectorAll('.gh-header-actions'),
@@ -443,9 +592,15 @@ function attachPrActionButtons() {
     container.dataset.wdBuildBtn = '1';
     const sibling = [...container.querySelectorAll('button')]
       .find(b => !b.textContent.toLowerCase().includes('experience'));
-    // Reverse so after prepend they appear in config order (first = leftmost)
-    for (const prAction of [...visibleActions].reverse()) {
-      container.prepend(makePrActionBtn(pr, prAction, sibling));
+    if (buttonGroups.length >= prThreshold) {
+      container.prepend(makePrActionsDropdownBtn(pr, visibleActions, sibling));
+    } else {
+      const btns = buttonGroups.map(g =>
+        g.type === 'stack'
+          ? makePrStackBtn(pr, g.stack, g.actions, sibling)
+          : makePrActionBtn(pr, g.action, sibling)
+      );
+      container.prepend(...btns);
     }
   }
 
@@ -464,12 +619,24 @@ function attachPrActionButtons() {
 
     if (!anchor.dataset.wdBuildBtn) {
       anchor.dataset.wdBuildBtn = '1';
-      for (const prAction of visibleActions) {
-        const stickyBtn = makeStickyPrActionBtn(pr, prAction);
+      if (buttonGroups.length >= prThreshold) {
+        const stickyBtn = makeStickyPrActionsDropdownBtn(pr, visibleActions);
         if (stateLabel && anchor.contains(stateLabel)) {
           stateLabel.after(stickyBtn);
         } else {
           anchor.appendChild(stickyBtn);
+        }
+      } else {
+        const stickyBtns = buttonGroups.map(g =>
+          g.type === 'stack'
+            ? makeStickyPrStackBtn(pr, g.stack, g.actions)
+            : makeStickyPrActionBtn(pr, g.action)
+        );
+        if (stateLabel && anchor.contains(stateLabel)) {
+          let ref = stateLabel;
+          for (const btn of stickyBtns) { ref.after(btn); ref = btn; }
+        } else {
+          for (const btn of stickyBtns) anchor.appendChild(btn);
         }
       }
     }
@@ -514,17 +681,18 @@ function makeStickyPrActionBtn(pr, prAction) {
 
   btn.addEventListener('click', () => {
     if (!TOKEN_CONFIGURED) {
-      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
-      chrome.runtime.sendMessage({ type: 'openOptions' });
+      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+      chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+      return;
+    }
+    if (isActionUnconfigured(prAction)) {
+      chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' });
       return;
     }
     (async () => {
-      let action = prAction.action;
-      const askLabels = collectAskLabels(action);
-      if (askLabels.length) {
-        try { action = applyAskValues(action, await showAskModal(askLabels)); }
-        catch { return; }
-      }
+      let action;
+      try { action = await resolveActionForDispatch(prAction.action, pr.repo); }
+      catch { return; }
       btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
       applyStyle(prAction.color, 'default', '0.7');
       btn.disabled = true;
@@ -584,17 +752,18 @@ function makePrActionBtn(pr, prAction, sibling) {
 
     btn.addEventListener('click', () => {
       if (!TOKEN_CONFIGURED) {
-        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
-        chrome.runtime.sendMessage({ type: 'openOptions' });
+        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+        chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+        return;
+      }
+      if (isActionUnconfigured(prAction)) {
+        chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' });
         return;
       }
       (async () => {
-        let action = prAction.action;
-        const askLabels = collectAskLabels(action);
-        if (askLabels.length) {
-          try { action = applyAskValues(action, await showAskModal(askLabels)); }
-          catch { return; }
-        }
+        let action;
+        try { action = await resolveActionForDispatch(prAction.action, pr.repo); }
+        catch { return; }
         btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
         applyStyle(prAction.color, 'white', 'default', '0.7');
         btn.disabled = true;
@@ -641,17 +810,18 @@ function makePrActionBtn(pr, prAction, sibling) {
 
     btn.addEventListener('click', () => {
       if (!TOKEN_CONFIGURED) {
-        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
-        chrome.runtime.sendMessage({ type: 'openOptions' });
+        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+        chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+        return;
+      }
+      if (isActionUnconfigured(prAction)) {
+        chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' });
         return;
       }
       (async () => {
-        let action = prAction.action;
-        const askLabels = collectAskLabels(action);
-        if (askLabels.length) {
-          try { action = applyAskValues(action, await showAskModal(askLabels)); }
-          catch { return; }
-        }
+        let action;
+        try { action = await resolveActionForDispatch(prAction.action, pr.repo); }
+        catch { return; }
         btn.innerHTML        = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
         btn.className        = 'wd-build-btn wd-loading';
         btn.style.background = prAction.color;
@@ -679,6 +849,196 @@ function makePrActionBtn(pr, prAction, sibling) {
           }
         );
       })();
+    });
+  }
+
+  return btn;
+}
+
+// ── PR action dropdown buttons (used when visibleActions.length >= prDropdownThreshold) ──────────
+
+const DROPDOWN_COLOR = '#24292f';
+
+function makeStickyPrActionsDropdownBtn(pr, visibleActions, { btnLabel, btnColor } = {}) {
+  const dropLabel = btnLabel ?? (CONFIG.prDropdownLabel || 'LazyGitHub ▾');
+  const dropColor = btnColor ?? DROPDOWN_COLOR;
+  const btn = document.createElement('button');
+  btn.innerHTML       = dropLabel;
+  btn.dataset.wdBuild = '1';
+
+  const stateLabel =
+    document.querySelector('[class*="StateLabel-Icon"]')?.parentElement ??
+    document.querySelector('.State');
+
+  function applyStyle(bg, cursor = 'pointer', opacity = '1') {
+    if (stateLabel) {
+      const s = window.getComputedStyle(stateLabel);
+      btn.style.cssText = `
+        -webkit-appearance:none; appearance:none;
+        display:inline-flex; align-items:center; align-self:center; flex-shrink:0;
+        padding:${s.padding}; border-radius:${s.borderRadius};
+        font-size:${s.fontSize}; font-weight:${s.fontWeight};
+        line-height:${s.lineHeight}; height:${s.height};
+        margin-left:6px; margin-right:6px; background:${bg}; color:white;
+        border:none; cursor:${cursor}; opacity:${opacity};
+      `;
+    } else {
+      btn.style.cssText = `
+        -webkit-appearance:none; appearance:none;
+        display:inline-flex; align-items:center; align-self:center; flex-shrink:0;
+        padding:3px 10px; border-radius:6px; font-size:12px; font-weight:600; line-height:1.5;
+        margin-left:6px; margin-right:6px; background:${bg}; color:white;
+        border:none; cursor:${cursor}; opacity:${opacity};
+      `;
+    }
+  }
+
+  applyStyle(dropColor);
+
+  btn.addEventListener('click', () => {
+    if (!TOKEN_CONFIGURED) {
+      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+      chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+      return;
+    }
+    openActionMenu(btn, visibleActions, async prAction => {
+      if (isActionUnconfigured(prAction)) { chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' }); return; }
+      let action;
+      try { action = await resolveActionForDispatch(prAction.action, pr.repo); } catch { return; }
+      btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
+      applyStyle(prAction.color, 'default', '0.7');
+      btn.disabled = true;
+      chrome.runtime.sendMessage(
+        { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
+        res => {
+          btn.disabled = false;
+          if (res?.success) {
+            btn.innerHTML = feedbackLabel(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+            applyStyle('#1a7f37');
+            const sToast = feedbackToast(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+            if (sToast) showToast({ success: true, message: sToast });
+            handleRedirect(prAction.feedback?.success?.redirect, res, pr.repo);
+            setTimeout(() => { btn.innerHTML = dropLabel; applyStyle(DROPDOWN_COLOR); }, 5000);
+          } else {
+            const errVars = { error: res?.error || 'Action failed.' };
+            btn.innerHTML = feedbackLabel(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+            applyStyle('#cf222e');
+            const fToast = feedbackToast(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+            if (fToast) showToast({ success: false, message: fToast });
+            setTimeout(() => { btn.innerHTML = dropLabel; applyStyle(DROPDOWN_COLOR); }, 3000);
+          }
+        }
+      );
+    });
+  });
+
+  return btn;
+}
+
+function makePrActionsDropdownBtn(pr, visibleActions, sibling, { btnLabel, btnColor } = {}) {
+  const dropLabel = btnLabel ?? (CONFIG.prDropdownLabel || 'LazyGitHub ▾');
+  const dropColor = btnColor ?? DROPDOWN_COLOR;
+  const btn = document.createElement('button');
+  btn.innerHTML       = dropLabel;
+  btn.dataset.wdBuild = '1';
+
+  if (sibling) {
+    const s = window.getComputedStyle(sibling);
+
+    function applyStyle(bg, color, cursor = 'pointer', opacity = '1') {
+      btn.style.cssText = `
+        -webkit-appearance:none; appearance:none;
+        display:inline-flex; align-items:center; gap:4px; flex-shrink:0;
+        padding:${s.padding}; border-radius:${s.borderRadius};
+        font-size:${s.fontSize}; font-weight:${s.fontWeight};
+        line-height:${s.lineHeight}; height:${s.height};
+        background:${bg}; color:${color}; border:${s.border};
+        cursor:${cursor}; opacity:${opacity}; margin-right:4px;
+      `;
+    }
+
+    applyStyle(dropColor, 'white');
+
+    btn.addEventListener('click', () => {
+      if (!TOKEN_CONFIGURED) {
+        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+        chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+        return;
+      }
+      openActionMenu(btn, visibleActions, async prAction => {
+        if (isActionUnconfigured(prAction)) { chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' }); return; }
+        let action;
+        try { action = await resolveActionForDispatch(prAction.action, pr.repo); } catch { return; }
+        btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
+        applyStyle(prAction.color, 'white', 'default', '0.7');
+        btn.disabled = true;
+        chrome.runtime.sendMessage(
+          { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
+          res => {
+            btn.disabled = false;
+            if (res?.success) {
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              applyStyle('#1a7f37', 'white');
+              const sToast = feedbackToast(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              if (sToast) showToast({ success: true, message: sToast });
+              handleRedirect(prAction.feedback?.success?.redirect, res, pr.repo);
+              setTimeout(() => { btn.innerHTML = dropLabel; applyStyle(dropColor, 'white'); }, 5000);
+            } else {
+              const errVars = { error: res?.error || 'Action failed.' };
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              applyStyle('#cf222e', 'white');
+              const fToast = feedbackToast(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              if (fToast) showToast({ success: false, message: fToast });
+              setTimeout(() => { btn.innerHTML = dropLabel; applyStyle(dropColor, 'white'); }, 3000);
+            }
+          }
+        );
+      });
+    });
+
+  } else {
+    btn.className        = 'wd-build-btn';
+    btn.style.background = dropColor;
+
+    btn.addEventListener('mouseenter', () => { if (!btn.disabled) btn.style.filter = 'brightness(0.85)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.filter = ''; });
+
+    btn.addEventListener('click', () => {
+      if (!TOKEN_CONFIGURED) {
+        showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+        chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+        return;
+      }
+      openActionMenu(btn, visibleActions, async prAction => {
+        if (isActionUnconfigured(prAction)) { chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' }); return; }
+        let action;
+        try { action = await resolveActionForDispatch(prAction.action, pr.repo); } catch { return; }
+        btn.innerHTML        = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
+        btn.className        = 'wd-build-btn wd-loading';
+        btn.style.background = prAction.color;
+        btn.disabled         = true;
+        chrome.runtime.sendMessage(
+          { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
+          res => {
+            btn.disabled = false;
+            if (res?.success) {
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              btn.className = 'wd-build-btn wd-success';
+              const sToast = feedbackToast(prAction.feedback, 'success', {}, PR_FB_DEFAULTS);
+              if (sToast) showToast({ success: true, message: sToast });
+              handleRedirect(prAction.feedback?.success?.redirect, res, pr.repo);
+              setTimeout(() => { btn.innerHTML = dropLabel; btn.className = 'wd-build-btn'; btn.style.background = dropColor; }, 5000);
+            } else {
+              const errVars = { error: res?.error || 'Action failed.' };
+              btn.innerHTML = feedbackLabel(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              btn.className = 'wd-build-btn wd-failure';
+              const fToast = feedbackToast(prAction.feedback, 'failure', errVars, PR_FB_DEFAULTS);
+              if (fToast) showToast({ success: false, message: fToast });
+              setTimeout(() => { btn.innerHTML = dropLabel; btn.className = 'wd-build-btn'; btn.style.background = dropColor; }, 3000);
+            }
+          }
+        );
+      });
     });
   }
 
@@ -741,18 +1101,20 @@ function attachCommentClickHandler(btn, link, caConfig) {
     e.stopPropagation();
 
     if (!TOKEN_CONFIGURED) {
-      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyDeploy settings.' });
-      chrome.runtime.sendMessage({ type: 'openOptions' });
+      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+      chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+      return;
+    }
+    if (isActionUnconfigured(caConfig)) {
+      chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' });
       return;
     }
 
     (async () => {
-      let action = caConfig.action;
-      const askLabels = collectAskLabels(action);
-      if (askLabels.length) {
-        try { action = applyAskValues(action, await showAskModal(askLabels)); }
-        catch { return; }
-      }
+      const repo = link.href.match(/github\.com\/([^/]+\/[^/]+)/)?.[1] ?? '';
+      let action;
+      try { action = await resolveActionForDispatch(caConfig.action, repo); }
+      catch { return; }
 
       btn.textContent      = feedbackLabel(caConfig.feedback, 'pending', {}, CA_FB_DEFAULTS);
       btn.className        = 'wd-btn wd-visible wd-loading';
@@ -794,20 +1156,121 @@ function attachCommentButtons(link) {
   link.dataset.wdAttached = '1';
 
   const author = getCommentAuthor(link);
+  const caConfigs = (CONFIG.actions ?? [])
+    .filter(ca => ca.trigger === 'comment')
+    .filter(ca => isActionAuthorAllowed(ca, author));
 
-  const buttons = (CONFIG.actions ?? [])
-    .filter(caConfig => caConfig.trigger === 'comment')
-    .filter(caConfig => isActionAuthorAllowed(caConfig, author))
-    .map(caConfig => {
-      const btn = createCommentActionBtn(caConfig);
-      attachCommentClickHandler(btn, link, caConfig);
-      return btn;
+  if (caConfigs.length === 0) return;
+
+  const caThreshold  = CONFIG.commentDropdownThreshold ?? 4;
+  const buttonGroups = groupIntoButtonGroups(caConfigs, CONFIG.stacks ?? []);
+
+  if (buttonGroups.length >= caThreshold) {
+    const trigger = makeCommentActionsDropdownTrigger(link, caConfigs);
+    link.after(trigger);
+    attachHoverBehaviour(link, [trigger]);
+  } else if (buttonGroups.length === 1 && buttonGroups[0].type === 'individual') {
+    const btn = createCommentActionBtn(buttonGroups[0].action);
+    attachCommentClickHandler(btn, link, buttonGroups[0].action);
+    link.after(btn);
+    attachHoverBehaviour(link, [btn]);
+  } else {
+    const buttons = buttonGroups.map(g =>
+      g.type === 'stack'
+        ? makeCommentStackTrigger(link, g.stack, g.actions)
+        : (() => { const b = createCommentActionBtn(g.action); attachCommentClickHandler(b, link, g.action); return b; })()
+    );
+    for (const btn of [...buttons].reverse()) link.after(btn);
+    attachHoverBehaviour(link, buttons);
+  }
+}
+
+function makeCommentActionsDropdownTrigger(link, caConfigs, { btnLabel, btnColor } = {}) {
+  const TRIGGER_LABEL = btnLabel ?? (CONFIG.commentDropdownLabel || 'Actions ▾');
+  const TRIGGER_COLOR = btnColor ?? '#57606a';
+
+  const btn = document.createElement('span');
+  btn.className        = 'wd-btn';
+  btn.textContent      = TRIGGER_LABEL;
+  btn.dataset.label    = TRIGGER_LABEL;
+  btn.style.background = TRIGGER_COLOR;
+
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!TOKEN_CONFIGURED) {
+      showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+      chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+      return;
+    }
+
+    openActionMenu(btn, caConfigs, async caConfig => {
+      if (isActionUnconfigured(caConfig)) { chrome.runtime.sendMessage({ type: 'openOptions', reason: 'not-configured' }); return; }
+
+      const repo = link.href.match(/github\.com\/([^/]+\/[^/]+)/)?.[1] ?? '';
+      let action;
+      try { action = await resolveActionForDispatch(caConfig.action, repo); } catch { return; }
+
+      btn.textContent      = feedbackLabel(caConfig.feedback, 'pending', {}, CA_FB_DEFAULTS);
+      btn.className        = 'wd-btn wd-visible wd-loading';
+      btn.style.background = caConfig.color;
+
+      chrome.runtime.sendMessage(
+        { type: 'action', trigger: 'comment', url: link.href, action, tokens: caConfig.tokens ?? [], onMultiple: caConfig.onMultiple ?? 'all' },
+        res => {
+          if (res?.success) {
+            const count = res.count ?? 1;
+            btn.textContent  = feedbackLabel(caConfig.feedback, 'success', { count }, CA_FB_DEFAULTS);
+            btn.className    = 'wd-btn wd-visible wd-success';
+            btn.style.background = caConfig.color;
+            const sToast = feedbackToast(caConfig.feedback, 'success', { count }, CA_FB_DEFAULTS);
+            if (sToast) showToast({ success: true, message: sToast });
+            handleRedirect(caConfig.feedback?.success?.redirect, res, repo);
+          } else {
+            const errVars   = { error: res?.error || 'Something went wrong.' };
+            btn.textContent = feedbackLabel(caConfig.feedback, 'failure', errVars, CA_FB_DEFAULTS);
+            btn.className   = 'wd-btn wd-visible wd-failure';
+            btn.style.background = '#cf222e';
+            const fToast = feedbackToast(caConfig.feedback, 'failure', errVars, CA_FB_DEFAULTS);
+            if (fToast) showToast({ success: false, message: fToast });
+          }
+          setTimeout(() => {
+            btn.textContent      = TRIGGER_LABEL;
+            btn.className        = 'wd-btn wd-visible';
+            btn.style.background = TRIGGER_COLOR;
+          }, 3000);
+        }
+      );
     });
+  });
 
-  if (buttons.length === 0) return;
+  return btn;
+}
 
-  buttons.reduce((prev, btn) => { prev.after(btn); return btn; }, link);
-  attachHoverBehaviour(link, buttons);
+// ── Stack button helpers ──────────────────────────────────────────────────────
+
+function makePrStackBtn(pr, stack, stackActions, sibling) {
+  if (stackActions.length === 1) {
+    return makePrActionBtn(pr, { ...stackActions[0], label: stack.label || stackActions[0].label, color: stack.color || stackActions[0].color }, sibling);
+  }
+  return makePrActionsDropdownBtn(pr, stackActions, sibling, { btnLabel: stack.label, btnColor: stack.color });
+}
+
+function makeStickyPrStackBtn(pr, stack, stackActions) {
+  if (stackActions.length === 1) {
+    return makeStickyPrActionBtn(pr, { ...stackActions[0], label: stack.label || stackActions[0].label, color: stack.color || stackActions[0].color });
+  }
+  return makeStickyPrActionsDropdownBtn(pr, stackActions, { btnLabel: stack.label, btnColor: stack.color });
+}
+
+function makeCommentStackTrigger(link, stack, stackActions) {
+  if (stackActions.length === 1) {
+    const btn = createCommentActionBtn({ label: stack.label || stackActions[0].label, color: stack.color || stackActions[0].color });
+    attachCommentClickHandler(btn, link, stackActions[0]);
+    return btn;
+  }
+  return makeCommentActionsDropdownTrigger(link, stackActions, { btnLabel: stack.label, btnColor: stack.color });
 }
 
 // ── Validation Helpers ────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@ document.getElementById('create-token-btn').addEventListener('click', () => {
   completeStep(step1);
   activateStep(step2);
   document.getElementById('ob-token-input').focus();
-  window.open('https://github.com/settings/tokens/new?scopes=repo,workflow&description=LazyDeploy', '_blank');
+  window.open('https://github.com/settings/tokens/new?scopes=repo,workflow&description=LazyGitHub', '_blank');
 });
 
 // Step 2 → inline token input

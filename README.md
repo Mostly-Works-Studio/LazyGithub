@@ -1,8 +1,8 @@
-# LazyDeploy
+# LazyGitHub
 
-**Trigger build and deployment workflows directly from GitHub PR pages — no tab switching, no copy-pasting.**
+**One-click actions on GitHub PRs — trigger workflows, post comments, and create deployments without leaving the page.**
 
-LazyDeploy is a Chrome extension that injects action buttons into GitHub pull request pages. Buttons in the PR header trigger per-PR workflows (builds, validations). Buttons next to version strings in PR comments trigger deployment workflows using data extracted directly from the comment.
+LazyGitHub is a Chrome extension that injects action buttons directly into GitHub PR pages. Buttons in the PR header and comment threads let you trigger workflows, post comments, create deployments, and fire repository dispatch events — all without switching tabs or copy-pasting values.
 
 ---
 
@@ -12,7 +12,7 @@ LazyDeploy is a Chrome extension that injects action buttons into GitHub pull re
 - **One-click comment actions** — buttons appear next to matching strings in PR comments; dispatch actions using tokens extracted from the comment line
 - **Hover-to-reveal comment buttons** — hidden until you hover a version link, auto-hide after 5 seconds of inactivity
 - **Conditional values** — any primary string field (`comment`, `file`, `eventType`, `environment`) can route to different values based on token content
-- **User input prompts** — use `{ask:"Label"}` in any field to pop up an input dialog at click time, letting users fill in values before dispatch
+- **User input prompts** — use `{input:"Label"}` in any field to pop up an input dialog at click time, letting users fill in values before dispatch
 - **Customisable button feedback** — configure what the button shows and which toast fires for pending, success, and failure states
 - **After-success redirect** — optionally navigate to the posted comment, the Actions tab, or the Deployments tab on success
 - **PR state gating** — hide buttons on merged or closed PRs
@@ -29,15 +29,16 @@ LazyDeploy is a Chrome extension that injects action buttons into GitHub pull re
 
 ## Installation
 
-> The extension is not yet published to the Chrome Web Store. Load it manually:
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol) — a setup page opens automatically on first install.
 
-1. Clone or download this repository
+> To revisit settings later, click the LazyGitHub icon in the toolbar.
+
+**For development / load unpacked:**
+
+1. Clone the repository: `git clone https://github.com/Mostly-Works-Studio/LazyGithub.git`
 2. Open Chrome and go to `chrome://extensions`
 3. Enable **Developer mode** (top-right toggle)
 4. Click **Load unpacked** and select the repository folder
-5. A setup page opens automatically — paste your GitHub Personal Access Token. LazyDeploy validates it against the GitHub API before saving.
-
-> To revisit settings later, click the LazyDeploy icon in the toolbar.
 
 ---
 
@@ -81,7 +82,7 @@ Applies to all repos unless overridden by a group or repo entry.
     {
       "label": "Build",
       "color": "#c95f0a",
-      "hiddenOnStates": [],   // e.g. ["merged", "closed"]
+      "filter": { "hideOnStates": [], "authors": [] },   // hideOnStates: e.g. ["merged", "closed"] — authors: show only for these GitHub usernames or regexes (empty = all)
       "tokens": [],
       "action": { "type": "comment", "comment": "/build {branchName}" },
 
@@ -99,13 +100,13 @@ Applies to all repos unless overridden by a group or repo entry.
   ],
 
   // Buttons next to matching strings in PR comments.
-  // onMultiple: "all" — trigger once per extracted row; "first" — trigger for the first row only.
-  // authorFilter: show only on comments from matching usernames or regexes; empty = all authors.
+  // onMultiple: "all" — trigger the action for each matching row; "first" — trigger only for the first match.
+  // filter.authors: show only on comments from matching usernames or regexes; empty = all authors.
   "commentActions": [
     {
       "label": "Deploy",
       "color": "#1f883d",
-      "authorFilter": [],
+      "filter": { "authors": [], "hideOnStates": [] },
       "tokens": [
         {
           "name": "version",
@@ -122,7 +123,7 @@ Applies to all repos unless overridden by a group or repo entry.
           { "if": "version:contains:PR", "value": "deploy_hotfix.yaml" },
           { "value": "deploy_release.yaml" }
         ],
-        "inputs": { "build_version": "{version}", "env": "{ask:\"Target environment\"}" }
+        "inputs": { "build_version": "{version}", "env": "{input:\"Target environment\"}" }
       },
       "feedback": {
         "pending": "Running…",
@@ -223,11 +224,11 @@ Placeholders resolved at dispatch time. Use `{name}` anywhere in action string f
 | `{error}` | API error message on failure |
 | `{count}` | Number of rows triggered (comment actions only) |
 
-**User input prompts** — use `{ask:"Label text"}` in any value field to show an input dialog when the button is clicked:
+**User input prompts** — use `{input:"Label text"}` in any value field to show an input dialog when the button is clicked:
 
 ```jsonc
-"comment": "/deploy {branchName} --tag {ask:\"Release tag\"}",
-"inputs": { "version": "{ask:\"Build version\"}", "env": "{ask:\"Environment\"}" }
+"comment": "/deploy {branchName} --tag {input:\"Release tag\"}",
+"inputs": { "version": "{input:\"Build version\"}", "env": "{input:\"Environment\"}" }
 ```
 
 The dialog collects all prompts at once before dispatch. Cancelling aborts the action. The same label reused in multiple fields is asked only once.
@@ -238,21 +239,21 @@ The dialog collects all prompts at once before dispatch. Cancelling aborts the a
 
 All four action types are available in both `prActions` and `commentActions`. Every primary string field supports plain strings or conditional arrays — see [Conditional Values](#conditional-values).
 
-**`comment`** — posts a comment to the PR thread.
+**`comment`** — posts a comment to the PR thread. Use this to trigger slash-command bots (e.g. `/build`, `/deploy`) or leave automated notes.
 ```jsonc
 "action": { "type": "comment", "comment": "/deploy {branchName}" }
 ```
 
-**`workflow`** — dispatches a GitHub Actions workflow.
+**`workflow`** — dispatches a `workflow_dispatch` event on a specific workflow file. Use this to trigger CI/CD pipelines with custom inputs.
 ```jsonc
 "action": {
   "type": "workflow",
   "file": "deploy.yaml",
-  "inputs": { "branch": "{branchName}", "env": "{ask:\"Target environment\"}" }
+  "inputs": { "branch": "{branchName}", "env": "{input:\"Target environment\"}" }
 }
 ```
 
-**`repositoryDispatch`** — broadcasts a custom event. Any workflow with `on: repository_dispatch` can react.
+**`repositoryDispatch`** — sends a custom event to the repo. Use this to trigger any workflow listening on `on: repository_dispatch`, or to integrate with external systems.
 ```jsonc
 "action": {
   "type": "repositoryDispatch",
@@ -261,7 +262,7 @@ All four action types are available in both `prActions` and `commentActions`. Ev
 }
 ```
 
-**`deployment`** — creates a GitHub deployment against the PR branch.
+**`deployment`** — creates a GitHub deployment record against the PR branch. Use this to track deployments in GitHub's Deployments tab and integrate with deployment status checks.
 ```jsonc
 "action": {
   "type": "deployment",
@@ -357,7 +358,7 @@ Global config                          ← lowest priority / fallback
 1. **Content script** (`content.js`) runs on every `github.com` page and uses a `MutationObserver` to watch for PR pages and comment threads
 2. PR action buttons are injected into the PR header (and sticky header); each hides itself for configured states
 3. Comment action buttons are injected inline next to matching links — hidden until hover, auto-hidden after 5 seconds
-4. On click: if the action has `{ask:"..."}` tokens, an input dialog is shown first. Once confirmed, the action is dispatched to the background service worker
+4. On click: if the action has `{input:"..."}` tokens, an input dialog is shown first. Once confirmed, the action is dispatched to the background service worker
 5. The background service worker (`background.js`) calls the GitHub API, resolves config layering, and returns success or error
 6. The button updates to the configured feedback state; a toast appears bottom-right
 7. If a `redirect` is configured, the page navigates after a short delay
@@ -379,8 +380,8 @@ No analytics, no phone-home, no data read beyond what is visible on the current 
 ## Development
 
 ```bash
-git clone https://github.com/Mostly-Works-Studio/lazydeploy.git
-cd lazydeploy
+git clone https://github.com/Mostly-Works-Studio/LazyGithub.git
+cd LazyGithub
 ```
 
 Load the folder as an unpacked extension (`chrome://extensions` → Developer mode → Load unpacked).
@@ -393,7 +394,7 @@ There is no build step — the extension is plain JavaScript.
 |---|---|
 | `config-defaults.js` | Single source of truth for `DEFAULT_CONFIG` — loaded by all three JS contexts |
 | `manifest.json` | Chrome extension manifest (MV3) |
-| `content.js` | Injected into GitHub pages — scans PR pages, resolves config, injects buttons, handles `{ask:"..."}` prompts |
+| `content.js` | Injected into GitHub pages — scans PR pages, resolves config, injects buttons, handles `{input:"..."}` prompts |
 | `background.js` | Service worker — GitHub API calls, config layering, action executor for all four action types |
 | `options.html` | Settings page UI — tabbed editor (Global, Groups, Repos), JSON modal |
 | `options.js` | Settings page logic — card builders, drag-sort, validation, save/discard/reset/JSON |
@@ -412,7 +413,7 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 3. Commit your changes
 4. Open a pull request
 
-If LazyDeploy is saving you time, a [review on the Chrome Web Store](https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol) goes a long way. ⭐
+If LazyGitHub is saving you time, consider [contributing on GitHub](https://github.com/Mostly-Works-Studio/LazyGithub) or sharing it with your team.
 
 ---
 

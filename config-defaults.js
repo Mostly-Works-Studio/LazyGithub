@@ -4,6 +4,9 @@ const DEFAULT_CONFIG = {
     patterns: [],
   },
   tokenPresets: [],
+  stacks: [],
+  prDropdownThreshold:      3,
+  commentDropdownThreshold: 4,
   actions: [
     {
       trigger:    'prHeader',

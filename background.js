@@ -43,6 +43,71 @@ const githubPost = (path, body, token) => githubRequest(path, token, {
   body:   JSON.stringify(body),
 });
 
+// ── Workflow YAML Input Schema ────────────────────────────────────────────────
+
+// Minimal state-machine parser for the on.workflow_dispatch.inputs block.
+// Returns [{name, description, required, default, type}] or [] if not found.
+function parseWorkflowDispatchInputs(yaml) {
+  const lines = yaml.split(/\r?\n/);
+  const result = [];
+
+  let state = 'root';
+  const d = {};
+  let cur = null;
+
+  for (const raw of lines) {
+    const trimmed = raw.trimStart();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('- ')) continue;
+    const indent = raw.length - trimmed.length;
+
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx === -1) continue;
+    const key = trimmed.slice(0, colonIdx).trim();
+    const val = trimmed.slice(colonIdx + 1).trim().replace(/^['"]|['"]$/g, '').trim();
+
+    switch (state) {
+      case 'root':
+        if (key === 'on') { state = 'on'; d.on = indent; }
+        break;
+      case 'on':
+        if (indent <= d.on) { state = 'root'; if (key === 'on') { state = 'on'; d.on = indent; } break; }
+        if (key === 'workflow_dispatch') { state = 'wfd'; d.wfd = indent; }
+        break;
+      case 'wfd':
+        if (indent <= d.wfd) { state = 'on'; break; }
+        if (key === 'inputs') { state = 'inputs'; d.inputs = indent; d.inputName = -1; }
+        break;
+      case 'inputs':
+        if (indent <= d.inputs) {
+          if (cur) { result.push({ ...cur }); cur = null; }
+          state = 'wfd';
+          break;
+        }
+        if (d.inputName === -1) d.inputName = indent;
+        if (indent === d.inputName) {
+          if (cur) result.push({ ...cur });
+          cur = { name: key, description: key, required: false, default: '', type: 'string' };
+        } else if (cur && indent > d.inputName) {
+          if (key === 'description') cur.description = val || key;
+          else if (key === 'required') cur.required = val === 'true';
+          else if (key === 'default') cur.default = val;
+          else if (key === 'type') cur.type = val;
+        }
+        break;
+    }
+  }
+  if (cur) result.push({ ...cur });
+  return result;
+}
+
+async function fetchWorkflowInputs(repo, workflowFile, token) {
+  const filename = workflowFile.replace(/^.*\.github\/workflows\//, '');
+  const res = await githubGet(`/repos/${repo}/contents/.github/workflows/${encodeURIComponent(filename)}`, token);
+  if (!res?.content) return [];
+  const yaml = atob(res.content.replace(/[\r\n\s]/g, ''));
+  return parseWorkflowDispatchInputs(yaml);
+}
+
 // ── URL Parsing ───────────────────────────────────────────────────────────────
 
 function parseCommentUrl(url) {
@@ -177,6 +242,14 @@ function extractRows(tokens, prCtx) {
 // ── Unified Action Executor ───────────────────────────────────────────────────
 
 async function executeAction(action, ctx, repo, defaultBranch, token) {
+  // Resolve optional target overrides — all fields are template-able
+  const tgtRepo = resolveTemplate(String(action.target?.repo     ?? ''), ctx).trim();
+  const tgtRef  = resolveTemplate(String(action.target?.ref      ?? ''), ctx).trim();
+  const tgtPr   = resolveTemplate(String(action.target?.prNumber ?? ''), ctx).trim();
+  const effectiveRepo = tgtRepo || repo;
+  const effectiveRef  = tgtRef  || defaultBranch;
+  const effectivePr   = tgtPr   || ctx.prNumber;
+
   function resolveObj(obj) {
     const out = {};
     for (const [k, v] of Object.entries(obj ?? {})) out[k] = resolveTemplate(String(v), ctx);
@@ -185,7 +258,7 @@ async function executeAction(action, ctx, repo, defaultBranch, token) {
 
   if (action.type === 'comment') {
     const comment = await githubPost(
-      `/repos/${repo}/issues/${ctx.prNumber}/comments`,
+      `/repos/${effectiveRepo}/issues/${effectivePr}/comments`,
       { body: resolveConditional(action.comment ?? '', ctx) },
       token
     );
@@ -195,8 +268,8 @@ async function executeAction(action, ctx, repo, defaultBranch, token) {
   if (action.type === 'workflow') {
     const file = resolveConditional(action.file ?? '', ctx);
     await githubPost(
-      `/repos/${repo}/actions/workflows/${file}/dispatches`,
-      { ref: defaultBranch, inputs: resolveObj(action.inputs) },
+      `/repos/${effectiveRepo}/actions/workflows/${file}/dispatches`,
+      { ref: effectiveRef, inputs: resolveObj(action.inputs) },
       token
     );
     return { success: true };
@@ -204,7 +277,7 @@ async function executeAction(action, ctx, repo, defaultBranch, token) {
 
   if (action.type === 'repositoryDispatch') {
     await githubPost(
-      `/repos/${repo}/dispatches`,
+      `/repos/${effectiveRepo}/dispatches`,
       { event_type: resolveConditional(action.eventType ?? '', ctx), client_payload: resolveObj(action.payload) },
       token
     );
@@ -213,9 +286,9 @@ async function executeAction(action, ctx, repo, defaultBranch, token) {
 
   if (action.type === 'deployment') {
     await githubPost(
-      `/repos/${repo}/deployments`,
+      `/repos/${effectiveRepo}/deployments`,
       {
-        ref:               ctx.branchName,
+        ref:               tgtRef || ctx.branchName,
         environment:       resolveConditional(action.environment ?? 'production', ctx),
         payload:           resolveObj(action.payload),
         auto_merge:        false,
@@ -329,9 +402,25 @@ chrome.action.onClicked.addListener(() => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'openOptions') {
-    chrome.tabs.create({ url: chrome.runtime.getURL('options.html') + '?reason=no-token' });
+    const reason = msg.reason ?? 'no-token';
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html') + `?reason=${encodeURIComponent(reason)}` });
     return;
   }
+
+  if (msg.type === 'getWorkflowInputs') {
+    (async () => {
+      const { token } = await getStoredData();
+      if (!token) { sendResponse({ success: false, inputs: [] }); return; }
+      try {
+        const inputs = await fetchWorkflowInputs(msg.repo, msg.workflowFile, token);
+        sendResponse({ success: true, inputs });
+      } catch {
+        sendResponse({ success: false, inputs: [] });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type !== 'action') return;
 
   (async () => {

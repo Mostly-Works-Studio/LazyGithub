@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Welcome to LazyDeploy</title>
+  <title>Welcome to LazyGitHub</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -293,8 +293,8 @@
 
     <!-- Header -->
     <div class="header">
-      <h1>Welcome to LazyDeploy 🚀</h1>
-      <p>Two quick steps and you'll be triggering builds and deployments directly from GitHub PR comments — no tab switching, no copy-pasting.</p>
+      <h1>Welcome to LazyGitHub</h1>
+      <p>Three quick steps to add one-click actions to your GitHub PRs — post comments, dispatch workflows, create deployments, all without leaving the page.</p>
     </div>
 
     <!-- Steps -->
@@ -306,8 +306,7 @@
         <div class="step-body">
           <div class="step-title">Create a GitHub Personal Access Token</div>
           <p class="step-desc">
-            LazyDeploy calls the GitHub API to read PR details, post build comments, and dispatch
-            workflow runs. It needs a token to do this on your behalf.
+            LazyGitHub uses the GitHub API to read PR details, post comments, dispatch workflows, and create deployments — all on your behalf. It needs a Personal Access Token with <code>repo</code> and <code>workflow</code> scopes. Your token is stored locally in your browser and never sent to any server.
           </p>
           <div class="scopes">
             <p style="font-size:12px;font-weight:600;margin-bottom:6px;color:#1f2328;">Required scopes</p>
@@ -333,7 +332,7 @@
         <div class="step-body">
           <div class="step-title">Paste your GitHub token</div>
           <p class="step-desc">
-            Paste the token you just created — LazyDeploy validates it instantly.
+            Paste the token you just created — LazyGitHub validates it instantly.
           </p>
           <div class="ob-input-row">
             <input type="password" id="ob-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
@@ -353,8 +352,8 @@
             You can always tweak this later from the extension settings.
           </p>
           <div class="ob-step3-actions">
-            <button class="btn btn-primary" id="ob-configure-btn">Configure from scratch →</button>
-            <button class="btn btn-secondary" id="ob-paste-btn">Have a config? Paste it here</button>
+            <button class="btn btn-primary" id="ob-configure-btn">Go to Settings &amp; Configure Actions →</button>
+            <button class="btn btn-secondary" id="ob-paste-btn">Already have a config? Paste JSON here</button>
           </div>
         </div>
       </div>
@@ -367,11 +366,11 @@
       <div class="done-icon">✓</div>
       <div class="done-text">
           <h3>You're all set!</h3>
-          <p>LazyDeploy is active. Open any configured repo's PR to see your buttons in action.</p>
+          <p>LazyGitHub is active. Open a PR in any configured repo to see your buttons. Head to settings anytime to add more actions or adjust your config.</p>
           <div class="done-links">
             <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank">⭐ Leave a review on the Chrome Web Store</a>
             <span class="done-links-sep">·</span>
-            <a href="https://github.com/Mostly-Works-Studio/lazydeploy" target="_blank">Contribute on GitHub →</a>
+            <a href="https://github.com/Mostly-Works-Studio/LazyGithub" target="_blank">Contribute on GitHub →</a>
           </div>
         </div>
     </div>
@@ -381,7 +380,7 @@
       &nbsp;·&nbsp;
       <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank" style="color:#656d76;">Chrome Web Store</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/Mostly-Works-Studio/lazydeploy" target="_blank" style="color:#656d76;">GitHub</a>
+      <a href="https://github.com/Mostly-Works-Studio/LazyGithub" target="_blank" style="color:#656d76;">GitHub</a>
     </p>
 
   </div>
@@ -389,8 +388,8 @@
   <!-- Paste-config modal -->
   <div class="ob-modal-overlay" id="ob-paste-overlay">
     <div class="ob-modal">
-      <div class="ob-modal-header">Paste your team's config</div>
-      <textarea id="ob-paste-textarea" placeholder="Paste JSON config here…" spellcheck="false"></textarea>
+      <div class="ob-modal-header">Paste a shared config</div>
+      <textarea id="ob-paste-textarea" placeholder="Paste JSON config exported from another LazyGitHub installation…" spellcheck="false"></textarea>
       <div id="ob-paste-status" class="ob-modal-status"></div>
       <div class="ob-modal-actions">
         <button class="btn btn-secondary" id="ob-paste-cancel">Cancel</button>
