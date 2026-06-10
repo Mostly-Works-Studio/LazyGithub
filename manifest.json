@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "LazyGitHub: Shortcuts & Automations for GitHub",
-  "description": "Inject one-click shortcuts and automations directly into GitHub pages — trigger workflows, post comments, and dispatch actions without leaving your PR.",
+  "name": "LazyGitHub: Shortcuts & Automations",
+  "description": "Inject one-click shortcuts & automations into GitHub pages: trigger workflows, post comments, dispatch actions anything with ease.",
   "version": "1.1.1",
   "icons": {
     "16":  "icon16.png",

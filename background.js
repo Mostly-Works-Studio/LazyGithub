@@ -168,9 +168,9 @@ function getSourceValue(source, prCtx) {
 
 // Extracts token rows from the execution context.
 //
-// For commentBody tokens: scans the comment line by line. Each line where the
-// first commentBody token (anchor) matches is one candidate row. All other
-// commentBody tokens are extracted from the same line — they co-vary naturally.
+// For commentBody tokens: scans the comment line by line. A line becomes a
+// candidate row when at least one commentBody token's regex matches it.
+// Tokens that don't match on a given line fall back to their default value.
 // Scalar-source tokens are resolved once and shared across all rows.
 //
 // Returns an array of token-value objects (one per matched row, or one for
@@ -200,39 +200,39 @@ function extractRows(tokens, prCtx) {
     return [scalarValues];
   }
 
-  // Line-by-line scan for commentBody tokens
-  const anchorToken = commentBodyTokens[0];
-  let anchorRe;
-  try { anchorRe = new RegExp(anchorToken.regex); }
-  catch { return []; }
-
+  // Line-by-line scan: a line becomes a row when at least one token regex matches.
+  // Tokens that don't match on a given line fall back to their default value.
+  // Deduplication is keyed on the full set of extracted values (not a single anchor).
   const rows = [];
   const seen = new Set();
 
   for (const line of (prCtx.commentBody ?? '').split('\n')) {
-    const anchorMatch = line.match(anchorRe);
-    if (!anchorMatch) continue;
-
-    const anchorValue = anchorMatch[1] ?? anchorMatch[0];
-    if (seen.has(anchorValue)) continue;
-
     const cleanLine = line.replace(/<[^>]*>/g, '');
     const row = { ...scalarValues };
+    let anyMatched = false;
     let skipRow = false;
 
     for (const token of commentBodyTokens) {
       let value;
       try {
         const m = cleanLine.match(new RegExp(token.regex));
-        value = m?.[1] ?? m?.[0] ?? (token.default ?? '');
+        if (m !== null) {
+          value = m[1] ?? m[0];
+          anyMatched = true;
+        } else {
+          value = token.default ?? '';
+        }
       } catch { value = token.default ?? ''; }
 
       if ((token.skip ?? []).includes(value)) { skipRow = true; break; }
       row[token.name] = value;
     }
 
-    if (skipRow) continue;
-    seen.add(anchorValue);
+    if (!anyMatched || skipRow) continue;
+
+    const key = commentBodyTokens.map(t => row[t.name]).join('\x00');
+    if (seen.has(key)) continue;
+    seen.add(key);
     rows.push(row);
   }
 

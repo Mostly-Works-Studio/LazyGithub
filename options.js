@@ -651,7 +651,7 @@ function openStackAssignMenu(anchor, items, onSelect) {
 }
 
 function pickRandomStackName() {
-  const used = new Set([...stacksList.querySelectorAll('.deploy-card')].map(c => c._read().label).filter(Boolean));
+  const used = new Set([...stacksList.querySelectorAll(':scope > .deploy-card')].map(c => c._read().label).filter(Boolean));
   const pool = STACK_NAMES.filter(n => !used.has(n));
   return (pool.length ? pool : STACK_NAMES)[Math.floor(Math.random() * (pool.length || STACK_NAMES.length))];
 }
@@ -713,7 +713,7 @@ function makeStackChips(initStackIds) {
   const chipsEl = mkDiv('stack-chips');
 
   const readGlobalStacks = () =>
-    [...stacksList.querySelectorAll('.deploy-card')].map(c => c._read()).filter(s => s.id);
+    [...stacksList.querySelectorAll(':scope > .deploy-card')].map(c => c._read()).filter(s => s.id);
 
   // Declared before addChip so the closure can re-append it to stay at the end
   const addBtn = mkSmallBtn('+ Add to stack', 'btn btn-secondary btn-xs', () => {});
@@ -885,7 +885,7 @@ function makeAddTokenSelect(tokenList, allowCommentSources) {
   sel.append(customOpt);
 
   sel.addEventListener('mousedown', e => {
-    const presets = [...tokenPresetsList.querySelectorAll('.deploy-card')].map(c => c._read()).filter(p => p.id);
+    const presets = [...tokenPresetsList.querySelectorAll(':scope > .deploy-card')].map(c => c._read()).filter(p => p.id);
     if (presets.length === 0) {
       e.preventDefault();
       appendAndScroll(tokenList, makeTokenCard({}, { allowCommentSources, expanded: true }));
@@ -895,7 +895,7 @@ function makeAddTokenSelect(tokenList, allowCommentSources) {
 
   sel.addEventListener('focus', () => {
     [...sel.querySelectorAll('.preset-opt')].forEach(o => o.remove());
-    const presets = [...tokenPresetsList.querySelectorAll('.deploy-card')].map(c => c._read());
+    const presets = [...tokenPresetsList.querySelectorAll(':scope > .deploy-card')].map(c => c._read());
     for (const p of presets) {
       if (!p.id) continue;
       const opt = document.createElement('option');
@@ -913,7 +913,7 @@ function makeAddTokenSelect(tokenList, allowCommentSources) {
     let tokenData = {};
     if (val.startsWith('__preset__')) {
       const presetId = val.slice('__preset__'.length);
-      const presets  = [...tokenPresetsList.querySelectorAll('.deploy-card')].map(c => c._read());
+      const presets  = [...tokenPresetsList.querySelectorAll(':scope > .deploy-card')].map(c => c._read());
       const preset   = presets.find(p => p.id === presetId);
       if (preset) {
         tokenData = { name: preset.id, source: preset.source, regex: preset.regex, default: preset.default, skip: preset.skip };
@@ -1197,6 +1197,10 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const addTokenSel = makeAddTokenSelect(tokenList, allowCommentSources);
   const varField = cfield('Variables', 'Extract named values from PR context and use them as {placeholders} in the action fields below');
   varField.append(tokenList, addTokenSel);
+  if (allowCommentSources) {
+    const matchNote = mkEl('p', 'sub-note', 'For comment actions: each line where at least one variable\'s pattern matches creates a separate action invocation. Variables whose pattern doesn\'t match on that line use their fallback value.');
+    varField.append(matchNote);
+  }
 
   const actionForm = buildActionFormEl(action.action);
 
@@ -1272,7 +1276,7 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
       hideOnStates: PR_STATES.filter((s, i) => hideChecks[i].checked),
       authors:      readTagList(afList),
     },
-    tokens:     [...tokenList.querySelectorAll('.deploy-card')].map(c => c._read()),
+    tokens:     [...tokenList.querySelectorAll(':scope > .deploy-card')].map(c => c._read()),
     onMultiple: omFirst.checked ? 'first' : 'all',
     action:     actionForm.read(),
     feedback:   fbSection.read(),
@@ -1380,7 +1384,7 @@ function buildPrActionsSectionEl(initActions) {
   enableDragSort(list, '.deploy-card');
   const addBtn = mkSmallBtn('+ Add Action', 'btn btn-secondary btn-xs', () => appendAndScroll(list, makeActionCard(ACTION_TEMPLATE(), { fixedTrigger: 'prHeader', expanded: true })));
   wrap.append(list);
-  return { el: wrap, listEl: list, addBtn, read: () => [...list.querySelectorAll('.deploy-card')].map(c => c._read()) };
+  return { el: wrap, listEl: list, addBtn, read: () => [...list.querySelectorAll(':scope > .deploy-card')].map(c => c._read()) };
 }
 
 function buildCommentActionsSectionEl(initActions) {
@@ -1391,7 +1395,7 @@ function buildCommentActionsSectionEl(initActions) {
   enableDragSort(list, '.deploy-card');
   const addBtn = mkSmallBtn('+ Add Action', 'btn btn-secondary btn-xs', () => appendAndScroll(list, makeActionCard(caTemplate(), { fixedTrigger: 'comment', expanded: true })));
   wrap.append(list);
-  return { el: wrap, listEl: list, addBtn, read: () => [...list.querySelectorAll('.deploy-card')].map(c => c._read()) };
+  return { el: wrap, listEl: list, addBtn, read: () => [...list.querySelectorAll(':scope > .deploy-card')].map(c => c._read()) };
 }
 
 
@@ -1538,7 +1542,7 @@ function makeGroupCard(groupData, { expanded = false } = {}) {
   const praSec = makeOverrideSection('Actions on PR', 'prActions' in config, () => buildPrActionsSectionEl(config.prActions), {
     initMode: config.prActionsMode ?? 'replace',
     fillFromParent: (listEl, force) => {
-      if (!force && listEl.querySelectorAll('.deploy-card').length > 0) return;
+      if (!force && listEl.querySelectorAll(':scope > .deploy-card').length > 0) return;
       listEl.innerHTML = '';
       for (const a of (formToGlobalConfig().actions ?? []).filter(a => a.trigger !== 'comment')) {
         listEl.append(makeActionCard(a, { fixedTrigger: 'prHeader' }));
@@ -1548,7 +1552,7 @@ function makeGroupCard(groupData, { expanded = false } = {}) {
   const cmaSec = makeOverrideSection('Actions on PR Comment', 'commentActions' in config, () => buildCommentActionsSectionEl(config.commentActions), {
     initMode: config.commentActionsMode ?? 'replace',
     fillFromParent: (listEl, force) => {
-      if (!force && listEl.querySelectorAll('.deploy-card').length > 0) return;
+      if (!force && listEl.querySelectorAll(':scope > .deploy-card').length > 0) return;
       listEl.innerHTML = '';
       for (const a of (formToGlobalConfig().actions ?? []).filter(a => a.trigger === 'comment')) {
         listEl.append(makeActionCard(a, { fixedTrigger: 'comment' }));
@@ -1604,7 +1608,7 @@ function makeRepoCard(repoName, repoConfig, { expanded = false } = {}) {
   const praSec = makeOverrideSection('PR Actions', 'prActions' in config, () => buildPrActionsSectionEl(config.prActions), {
     initMode: config.prActionsMode ?? 'replace',
     fillFromParent: (listEl, force) => {
-      if (!force && listEl.querySelectorAll('.deploy-card').length > 0) return;
+      if (!force && listEl.querySelectorAll(':scope > .deploy-card').length > 0) return;
       listEl.innerHTML = '';
       for (const a of resolveParentActions('prHeader', nameInput.value.trim())) {
         listEl.append(makeActionCard(a, { fixedTrigger: 'prHeader' }));
@@ -1614,7 +1618,7 @@ function makeRepoCard(repoName, repoConfig, { expanded = false } = {}) {
   const cmaSec = makeOverrideSection('Comment Actions', 'commentActions' in config, () => buildCommentActionsSectionEl(config.commentActions), {
     initMode: config.commentActionsMode ?? 'replace',
     fillFromParent: (listEl, force) => {
-      if (!force && listEl.querySelectorAll('.deploy-card').length > 0) return;
+      if (!force && listEl.querySelectorAll(':scope > .deploy-card').length > 0) return;
       listEl.innerHTML = '';
       for (const a of resolveParentActions('comment', nameInput.value.trim())) {
         listEl.append(makeActionCard(a, { fixedTrigger: 'comment' }));
@@ -1769,20 +1773,20 @@ function configToForm(config) {
 
 function formToGlobalConfig() {
   const repoFilterMode = document.querySelector('input[name="repo-filter-mode"]:checked')?.value ?? 'exclude';
-  const prActions      = [...prActionsList.querySelectorAll('.deploy-card')].map(c => c._read());
-  const commentActions = [...commentActionsList.querySelectorAll('.deploy-card')].map(c => c._read());
+  const prActions      = [...prActionsList.querySelectorAll(':scope > .deploy-card')].map(c => c._read());
+  const commentActions = [...commentActionsList.querySelectorAll(':scope > .deploy-card')].map(c => c._read());
   return {
     repoFilter: {
       mode:     repoFilterMode,
       patterns: readTagList(document.getElementById('repo-filter-list')),
     },
-    stacks:               [...stacksList.querySelectorAll('.deploy-card')].map(c => c._read()),
+    stacks:               [...stacksList.querySelectorAll(':scope > .deploy-card')].map(c => c._read()),
     prDropdownThreshold:      (v => isNaN(v) ? 3 : v)(parseInt(document.getElementById('pr-dropdown-threshold').value,      10)),
     commentDropdownThreshold: (v => isNaN(v) ? 4 : v)(parseInt(document.getElementById('comment-dropdown-threshold').value,  10)),
     prDropdownLabel:          document.getElementById('pr-dropdown-label').value.trim()      || undefined,
     commentDropdownLabel:     document.getElementById('comment-dropdown-label').value.trim() || undefined,
     actions:      [...prActions, ...commentActions],
-    tokenPresets: [...tokenPresetsList.querySelectorAll('.deploy-card')].map(c => c._read()),
+    tokenPresets: [...tokenPresetsList.querySelectorAll(':scope > .deploy-card')].map(c => c._read()),
   };
 }
 
@@ -1930,6 +1934,7 @@ function validateConfig(config) {
       if (a.tokens[ti].regex) { try { new RegExp(a.tokens[ti].regex); } catch (e) { return { message: `Actions on PR ${i+1}, Variable "${a.tokens[ti].name}": invalid match pattern — ${e.message}`, tab: 'global', locator: { listId: 'pr-actions-list', cardIndex: i } }; } }
     }
     const act = a.action ?? {};
+    if (!['comment', 'workflow', 'repositoryDispatch', 'deployment'].includes(act.type)) return { message: `Actions on PR ${i+1}: action type must be one of comment, workflow, repositoryDispatch, deployment.`, tab: 'global', locator: { listId: 'pr-actions-list', cardIndex: i } };
     if (act.type === 'comment'            && isConditionalEmpty(act.comment))    return { message: `Actions on PR ${i+1}: comment body cannot be empty.`,      tab: 'global', locator: { listId: 'pr-actions-list', cardIndex: i, field: 'action-comment' } };
     if (act.type === 'workflow'           && isConditionalEmpty(act.file))        return { message: `Actions on PR ${i+1}: workflow filename cannot be empty.`, tab: 'global', locator: { listId: 'pr-actions-list', cardIndex: i, field: 'action-file' } };
     if (act.type === 'repositoryDispatch' && isConditionalEmpty(act.eventType))   return { message: `Actions on PR ${i+1}: repository event cannot be empty.`, tab: 'global', locator: { listId: 'pr-actions-list', cardIndex: i, field: 'action-eventType' } };
@@ -1945,6 +1950,7 @@ function validateConfig(config) {
       if (a.tokens[ti].regex) { try { new RegExp(a.tokens[ti].regex); } catch (e) { return { message: `Actions on PR Comment ${i+1}, Variable "${a.tokens[ti].name}": invalid match pattern — ${e.message}`, tab: 'global', locator: { listId: 'comment-actions-list', cardIndex: i } }; } }
     }
     const act = a.action ?? {};
+    if (!['comment', 'workflow', 'repositoryDispatch', 'deployment'].includes(act.type)) return { message: `Actions on PR Comment ${i+1}: action type must be one of comment, workflow, repositoryDispatch, deployment.`, tab: 'global', locator: { listId: 'comment-actions-list', cardIndex: i } };
     if (act.type === 'comment'            && isConditionalEmpty(act.comment))    return { message: `Actions on PR Comment ${i+1}: comment body cannot be empty.`,      tab: 'global', locator: { listId: 'comment-actions-list', cardIndex: i, field: 'action-comment' } };
     if (act.type === 'workflow'           && isConditionalEmpty(act.file))        return { message: `Actions on PR Comment ${i+1}: workflow filename cannot be empty.`, tab: 'global', locator: { listId: 'comment-actions-list', cardIndex: i, field: 'action-file' } };
     if (act.type === 'repositoryDispatch' && isConditionalEmpty(act.eventType))   return { message: `Actions on PR Comment ${i+1}: repository event cannot be empty.`, tab: 'global', locator: { listId: 'comment-actions-list', cardIndex: i, field: 'action-eventType' } };
