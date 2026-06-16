@@ -11,8 +11,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check version bump
+        id: version_check
+        run: |
+          CURRENT=$(jq -r '.version' manifest.json)
+          PREVIOUS=$(git show HEAD~1:manifest.json 2>/dev/null | jq -r '.version' || echo "0.0.0")
+          echo "current=$CURRENT"
+          echo "previous=$PREVIOUS"
+          if [ "$CURRENT" = "$PREVIOUS" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Package extension
+        if: steps.version_check.outputs.changed == 'true'
         run: |
           zip -r extension.zip . \
             --exclude "*.git*" \
@@ -24,6 +40,7 @@ jobs:
             --exclude "LICENSE"
 
       - name: Upload & publish to Chrome Web Store
+        if: steps.version_check.outputs.changed == 'true'
         run: npx chrome-webstore-upload-cli@latest upload --auto-publish
         env:
           EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
