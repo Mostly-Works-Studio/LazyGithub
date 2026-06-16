@@ -422,7 +422,30 @@ function populateTagList(listEl, arr) {
   for (const v of arr ?? []) listEl.appendChild(makeTagRow(v));
 }
 
-// ── Drag-sort helper ──────────────────────────────────────────────────────────
+// ── Replace-step helpers ──────────────────────────────────────────────────────
+
+function makeReplaceRow(step = {}) {
+  const row = mkDiv('replace-row');
+  const pattern = mkInput(step.pattern ?? '', true, '[^a-zA-Z0-9]');
+  const flags   = mkInput(step.flags   ?? 'g',  true, 'g');
+  const withVal  = mkInput(step.with    ?? '', false, 'replacement');
+  const rm = mkSmallBtn('×', 'btn btn-danger btn-xs', () => row.remove());
+  row.append(pattern, flags, withVal, rm);
+  return row;
+}
+function readReplaceList(listEl) {
+  return [...listEl.querySelectorAll('.replace-row')].map(r => {
+    const [pattern, flags, withVal] = r.querySelectorAll('input');
+    return { pattern: pattern.value.trim(), flags: flags.value.trim() || 'g', with: withVal.value };
+  }).filter(s => s.pattern);
+}
+function populateReplaceList(listEl, arr) {
+  listEl.innerHTML = '';
+  const steps = Array.isArray(arr) ? arr : (arr ? [arr] : []);
+  for (const s of steps) listEl.appendChild(makeReplaceRow(s));
+}
+
+
 // Enables drag-to-reorder on direct children of listEl matching itemSelector.
 // Dragging must start on a .drag-handle element inside the item.
 
@@ -800,23 +823,45 @@ function makeTokenCard(token, { allowCommentSources = true, expanded = false } =
   const skipInline = mkDiv('tag-inline-row'); skipInline.append(skipList, skipAdd);
   const skipWrap  = mkDiv(''); skipWrap.append(skipInline, skipNote);
 
+  const replaceList = mkDiv('replace-list');
+  populateReplaceList(replaceList, token.replace);
+  const replaceAdd  = mkSmallBtn('+ Add step', 'btn btn-secondary btn-xs', () => replaceList.append(makeReplaceRow()));
+  const replaceNote = mkEl('p', 'sub-note', 'Steps run in order on the extracted value. Pattern is a regex; flags default to "g".');
+  const replaceWrap = mkDiv(''); replaceWrap.append(replaceList, replaceAdd, replaceNote);
+
+  const addBody = mkDiv('feedback-section-body');
+  addBody.append(
+    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
+    cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
+    cardRowTop(fieldLabelEl('Transform', 'Chain of regex replace steps applied to the extracted value in order — pattern, flags, replacement'), replaceWrap),
+  );
+  const addChevron = mkEl('span', 'feedback-chevron', '▾');
+  const addHeader  = mkDiv('feedback-section-header');
+  addHeader.append(addChevron, document.createTextNode('Additional Settings'));
+  const addSection = mkDiv('feedback-section collapsed');
+  addSection.append(addHeader, addBody);
+  addHeader.addEventListener('click', () => addSection.classList.toggle('collapsed'));
+
   const body = mkDiv('deploy-card-body');
   body.append(
     cardRow(fieldLabelEl('Extract from', 'Where to read this variable\'s value from — choose a PR field or the comment body'), sourceSel),
     cardRow(fieldLabelEl('Match pattern', 'Optional regex to extract a specific part of the source. Capture group 1 becomes the value; leave blank to use the full source'), regexInput),
     regexNote,
-    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
-    cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
+    addSection,
   );
   card.append(body);
 
-  card._read = () => ({
-    name:    nameInput.value.trim(),
-    source:  sourceSel.value,
-    regex:   regexInput.value.trim(),
-    default: defaultInput.value.trim(),
-    skip:    readTagList(skipList),
-  });
+  card._read = () => {
+    const replace = readReplaceList(replaceList);
+    return {
+      name:    nameInput.value.trim(),
+      source:  sourceSel.value,
+      regex:   regexInput.value.trim(),
+      default: defaultInput.value.trim(),
+      skip:    readTagList(skipList),
+      ...(replace.length ? { replace } : {}),
+    };
+  };
   return card;
 }
 
@@ -848,24 +893,46 @@ function makeTokenPresetCard(preset, { expanded = false } = {}) {
   const skipInline = mkDiv('tag-inline-row'); skipInline.append(skipList, skipAdd);
   const skipWrap = mkDiv(''); skipWrap.append(skipInline, skipNote);
 
+  const replaceList = mkDiv('replace-list');
+  populateReplaceList(replaceList, preset.replace);
+  const replaceAdd  = mkSmallBtn('+ Add step', 'btn btn-secondary btn-xs', () => replaceList.append(makeReplaceRow()));
+  const replaceNote = mkEl('p', 'sub-note', 'Steps run in order on the extracted value. Pattern is a regex; flags default to "g".');
+  const replaceWrap = mkDiv(''); replaceWrap.append(replaceList, replaceAdd, replaceNote);
+
+  const addBody = mkDiv('feedback-section-body');
+  addBody.append(
+    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
+    cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
+    cardRowTop(fieldLabelEl('Transform', 'Chain of regex replace steps applied to the extracted value in order — pattern, flags, replacement'), replaceWrap),
+  );
+  const addChevron = mkEl('span', 'feedback-chevron', '▾');
+  const addHeader  = mkDiv('feedback-section-header');
+  addHeader.append(addChevron, document.createTextNode('Additional Settings'));
+  const addSection = mkDiv('feedback-section collapsed');
+  addSection.append(addHeader, addBody);
+  addHeader.addEventListener('click', () => addSection.classList.toggle('collapsed'));
+
   body.append(
     cardRow(fieldLabelEl('Variable name', 'The identifier used as {variableName} in action fields'), idInput),
     cardRow(fieldLabelEl('Extract from', 'Where to read this variable\'s value from — choose a PR field or the comment body'), sourceSel),
     cardRow(fieldLabelEl('Match pattern', 'Optional regex to extract a specific part of the source. Capture group 1 becomes the value; leave blank to use the full source'), regexInput),
     regexNote,
-    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
-    cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
+    addSection,
   );
   card.append(body);
 
-  card._read = () => ({
-    id:      idInput.value.trim(),
-    label:   name.value.trim(),
-    source:  sourceSel.value,
-    regex:   regexInput.value.trim(),
-    default: defaultInput.value.trim(),
-    skip:    readTagList(skipList),
-  });
+  card._read = () => {
+    const replace = readReplaceList(replaceList);
+    return {
+      id:      idInput.value.trim(),
+      label:   name.value.trim(),
+      source:  sourceSel.value,
+      regex:   regexInput.value.trim(),
+      default: defaultInput.value.trim(),
+      skip:    readTagList(skipList),
+      ...(replace.length ? { replace } : {}),
+    };
+  };
   return card;
 }
 
@@ -974,16 +1041,23 @@ function buildFeedbackSection(initFeedback, { isComment = false } = {}) {
   const note = mkEl('p', 'sub-note', '');
   note.innerHTML = '<code>{error}</code> = API error message' + (isComment ? '; <code>{count}</code> = rows triggered' : '') + '. Blank fields use defaults.';
 
-  const body = mkDiv('feedback-section-body');
-  body.append(
-    mkEl('p', 'feedback-subsection-title', 'Label & Toast'),
+  const ltBody = mkDiv('feedback-section-body');
+  ltBody.append(
     cfield('Loading label', 'Button text while the action is running (e.g. ⏳ Deploying…)', pendingInput),
     cfield('Success', 'Label: button text after a successful action. Toast: bottom-right notification (leave blank to suppress)', successPair),
     cfield('Failure', 'Label: button text after a failed action. Toast: error notification shown. Use {error} for the API error message', failurePair),
     note,
-    mkEl('p', 'feedback-subsection-title', 'Others'),
-    cfield('After success, go to', 'URL to open in the current tab after a successful action — useful for redirecting to a deploy log or PR list. Supports {placeholders}', redirectSel),
   );
+  const ltChevron = mkEl('span', 'feedback-chevron', '▾');
+  const ltHeader  = mkDiv('feedback-section-header');
+  ltHeader.append(ltChevron, document.createTextNode('Label & Toast'));
+  const ltSection = mkDiv('feedback-section collapsed');
+  ltSection.append(ltHeader, ltBody);
+  ltHeader.addEventListener('click', () => ltSection.classList.toggle('collapsed'));
+
+  const redirectCfield = cfield('After success, go to', 'URL to open in the current tab after a successful action — useful for redirecting to a deploy log or PR list. Supports {placeholders}', redirectSel);
+  const body = mkDiv('feedback-section-body');
+  body.append(ltSection, redirectCfield);
 
   const chevron = mkEl('span', 'feedback-chevron', '▾');
   const header = mkDiv('feedback-section-header');
@@ -995,6 +1069,8 @@ function buildFeedbackSection(initFeedback, { isComment = false } = {}) {
 
   return {
     el: wrap,
+    body,
+    redirectCfield,
     read() {
       const pending = pendingInput.value.trim();
       const sl = successLabelInput.value.trim();
@@ -1239,17 +1315,13 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
 
   const hideRow = cfield('Hide when PR is', 'Don\'t show this button when the PR matches any of these states', hideGroup);
   const fbSection  = buildFeedbackSection(action.feedback, { isComment: initTrigger === 'comment' });
-  const othersTitle = [...fbSection.el.querySelectorAll('.feedback-subsection-title')]
-    .find(el => el.textContent === 'Others');
   const omRow = cfield('Multiple matches', 'When a comment contains multiple matching rows, fire for each one (All) or only the first (First match only)', omGroup);
-  othersTitle.after(omRow);
-  omRow.after(afRow);
-  afRow.after(hideRow);
+  fbSection.redirectCfield.before(omRow, afRow, hideRow);
 
   // Stacks assignment — lives inside Additional Settings
   const stackChips = makeStackChips(action.stacks);
   const stacksRow = cfield('Stacks', 'Nest this action inside a dropdown button. Add it to one or more stacks — it will appear in each stack\'s dropdown menu', stackChips);
-  fbSection.el.querySelector('.feedback-section-body').prepend(stacksRow);
+  fbSection.body.prepend(stacksRow);
 
   body.append(
     actionForm.typeRowEl,
@@ -1509,7 +1581,6 @@ function makeGroupCard(groupData, { expanded = false } = {}) {
 
   const header = mkDiv('override-card-header');
   const colChevron = mkEl('span', 'override-card-chevron', '▾');
-  colChevron.addEventListener('click', () => card.classList.toggle('collapsed'));
   const groupHandle = mkEl('span', 'drag-handle', '⠿'); groupHandle.draggable = true;
   const nameInput = mkInput(groupData?.name ?? '', false, 'Group name');
   nameInput.className = 'override-card-repo-name';
@@ -1519,6 +1590,10 @@ function makeGroupCard(groupData, { expanded = false } = {}) {
   groupPencil.addEventListener('click', e => {
     e.stopPropagation();
     cardEditPopup.open(groupPencil, [{ label: 'Group name', input: nameInput }]);
+  });
+  header.addEventListener('click', e => {
+    if (e.target.closest('button, input, select, label, .card-edit-btn')) return;
+    card.classList.toggle('collapsed');
   });
   const groupDupBtn = mkSmallBtn('Duplicate', 'btn btn-secondary btn-xs', () => {
     const { name, repos, config } = card._read();
@@ -1585,7 +1660,6 @@ function makeRepoCard(repoName, repoConfig, { expanded = false } = {}) {
 
   const header = mkDiv('override-card-header');
   const repoChevron = mkEl('span', 'override-card-chevron', '▾');
-  repoChevron.addEventListener('click', () => card.classList.toggle('collapsed'));
   const nameInput = mkInput(repoName ?? '', false, 'owner/repo-name');
   nameInput.className = 'override-card-repo-name field-input--mono';
   const repoPencil = makePencilBtn();
@@ -1594,6 +1668,10 @@ function makeRepoCard(repoName, repoConfig, { expanded = false } = {}) {
   repoPencil.addEventListener('click', e => {
     e.stopPropagation();
     cardEditPopup.open(repoPencil, [{ label: 'Repo name', input: nameInput }]);
+  });
+  header.addEventListener('click', e => {
+    if (e.target.closest('button, input, select, label, .card-edit-btn')) return;
+    card.classList.toggle('collapsed');
   });
   const repoDupBtn = mkSmallBtn('Duplicate', 'btn btn-secondary btn-xs', () => {
     const { name, config } = card._read();
@@ -1762,9 +1840,6 @@ function configToForm(config) {
   const hasFilterRules  = (config.repoFilter?.patterns ?? []).length > 0;
   if (hasPatterns) {
     revealExtractionPatterns();
-  }
-  if (hasPatterns || hasFilterRules) {
-    document.getElementById('additional-settings-section').classList.remove('collapsed');
   }
   if (hasFilterRules) {
     document.getElementById('repo-filter-section').classList.remove('collapsed');

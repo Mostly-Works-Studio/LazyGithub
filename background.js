@@ -175,6 +175,15 @@ function getSourceValue(source, prCtx) {
 //
 // Returns an array of token-value objects (one per matched row, or one for
 // scalar-only cases). An empty array means no rows were found.
+function applyReplaceSteps(value, replace) {
+  if (!replace) return value;
+  const steps = Array.isArray(replace) ? replace : [replace];
+  return steps.reduce((v, r) => {
+    try { return v.replace(new RegExp(r.pattern, r.flags ?? 'g'), r.with ?? ''); }
+    catch { return v; }
+  }, value);
+}
+
 function extractRows(tokens, prCtx) {
   const commentBodyTokens = tokens.filter(t => t.source === 'commentBody');
   const scalarTokens      = tokens.filter(t => t.source !== 'commentBody');
@@ -192,7 +201,7 @@ function extractRows(tokens, prCtx) {
     } else {
       value = raw || (token.default ?? '');
     }
-    scalarValues[token.name] = value;
+    scalarValues[token.name] = applyReplaceSteps(value, token.replace);
   }
 
   // No commentBody tokens → single row from scalar values only
@@ -224,6 +233,7 @@ function extractRows(tokens, prCtx) {
         }
       } catch { value = token.default ?? ''; }
 
+      value = applyReplaceSteps(value, token.replace);
       if ((token.skip ?? []).includes(value)) { skipRow = true; break; }
       row[token.name] = value;
     }
