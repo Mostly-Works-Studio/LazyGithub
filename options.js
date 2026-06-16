@@ -825,8 +825,11 @@ function makeTokenCard(token, { allowCommentSources = true, expanded = false } =
 
   const replaceList = mkDiv('replace-list');
   populateReplaceList(replaceList, token.replace);
+  const replaceHeader = mkDiv('replace-row-header');
+  ['Pattern', 'Flags', 'Replace with', ''].forEach(t => replaceHeader.append(mkEl('span', 'cfield-pair-sublabel', t)));
+  replaceList.prepend(replaceHeader);
   const replaceAdd  = mkSmallBtn('+ Add step', 'btn btn-secondary btn-xs', () => replaceList.append(makeReplaceRow()));
-  const replaceNote = mkEl('p', 'sub-note', 'Steps run in order on the extracted value. Pattern is a regex; flags default to "g".');
+  const replaceNote = mkEl('p', 'sub-note', 'Applied in order. Flags: g = all matches, i = case-insensitive, gi = both. Leave "Replace with" empty to delete matches.');
   const replaceWrap = mkDiv(''); replaceWrap.append(replaceList, replaceAdd, replaceNote);
 
   const addBody = mkDiv('feedback-section-body');
@@ -895,8 +898,11 @@ function makeTokenPresetCard(preset, { expanded = false } = {}) {
 
   const replaceList = mkDiv('replace-list');
   populateReplaceList(replaceList, preset.replace);
+  const replaceHeader = mkDiv('replace-row-header');
+  ['Pattern', 'Flags', 'Replace with', ''].forEach(t => replaceHeader.append(mkEl('span', 'cfield-pair-sublabel', t)));
+  replaceList.prepend(replaceHeader);
   const replaceAdd  = mkSmallBtn('+ Add step', 'btn btn-secondary btn-xs', () => replaceList.append(makeReplaceRow()));
-  const replaceNote = mkEl('p', 'sub-note', 'Steps run in order on the extracted value. Pattern is a regex; flags default to "g".');
+  const replaceNote = mkEl('p', 'sub-note', 'Applied in order. Flags: g = all matches, i = case-insensitive, gi = both. Leave "Replace with" empty to delete matches.');
   const replaceWrap = mkDiv(''); replaceWrap.append(replaceList, replaceAdd, replaceNote);
 
   const addBody = mkDiv('feedback-section-body');

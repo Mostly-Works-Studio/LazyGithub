@@ -12,6 +12,7 @@ LazyGitHub is a Chrome extension that injects action buttons directly into GitHu
 - **One-click comment actions** — buttons appear next to matching strings in PR comments; dispatch actions using tokens extracted from the comment line
 - **Hover-to-reveal comment buttons** — hidden until you hover a version link, auto-hide after 5 seconds of inactivity
 - **Conditional values** — any primary string field (`comment`, `file`, `eventType`, `environment`) can route to different values based on token content
+- **Token transform steps** — post-process any extracted value with a chain of regex replace steps (strip special characters, normalise casing, reformat strings)
 - **User input prompts** — use `{input:"Label"}` in any field to pop up an input dialog at click time, letting users fill in values before dispatch
 - **Customisable button feedback** — configure what the button shows and which toast fires for pending, success, and failure states
 - **After-success redirect** — optionally navigate to the posted comment, the Actions tab, or the Deployments tab on success
@@ -75,6 +76,7 @@ Applies to all repos unless overridden by a group or repo entry.
   // source: commentBody | commentAuthor | prTitle | prBranch | prNumber | prAuthor | repo
   // regex: optional — capture group 1 is the value; if absent, the full source is used.
   // default: fallback if no match. skip: discard the row if the extracted value is in this list.
+  // replace: optional — one or more regex replace steps applied after extraction (see Transform steps).
   "tokenPresets": [],
 
   // Buttons in the PR header. Each runs independently.
@@ -218,6 +220,29 @@ Placeholders resolved at dispatch time. Use `{name}` anywhere in action string f
 | `{commentAuthor}` | GitHub login of the comment author | `commentActions` |
 
 **Custom tokens** — any name defined in the action's `tokens` array is available as `{tokenName}`.
+
+**Transform steps** — add a `replace` array to any token to post-process the extracted value with chained regex replacements. Each step runs in order:
+
+```jsonc
+"tokens": [
+  {
+    "name": "branch",
+    "source": "commentBody",
+    "regex": "/deploy (.+)",
+    "replace": [
+      { "pattern": "[^a-zA-Z0-9]", "flags": "g", "with": "" },   // strip non-alphanumeric
+      { "pattern": "^-|-$",        "flags": "g", "with": "" }    // trim leading/trailing dashes
+    ]
+  }
+]
+```
+
+Each step has:
+- `pattern` — JavaScript regex pattern string
+- `flags` — regex flags (default `"g"`); common values: `g` (all matches), `i` (case-insensitive), `gi` (both)
+- `with` — replacement string (empty string to delete matches); supports `$1`, `$2` capture group references
+
+A single step can be provided as an object instead of a one-element array. Invalid patterns are silently skipped.
 
 **Feedback tokens** (in `feedback` label/toast fields only):
 

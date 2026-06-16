@@ -235,8 +235,8 @@
     .kv-row  { display: grid; grid-template-columns: 1fr 1fr auto; gap: 5px; align-items: center; }
 
     /* ── Replace-step editor ── */
-    .replace-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 5px; }
-    .replace-row  { display: grid; grid-template-columns: 1.5fr 40px 1fr auto; gap: 5px; align-items: center; }
+    .replace-list { display: grid; grid-template-columns: 1.5fr 40px 1fr auto; column-gap: 5px; row-gap: 4px; margin-bottom: 5px; align-items: center; }
+    .replace-row, .replace-row-header { display: contents; }
 
     /* ── Tag editor ── */
     .tag-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
@@ -511,11 +511,6 @@
     .feedback-section.collapsed .feedback-section-header .feedback-chevron { transform: rotate(-90deg); }
     .feedback-section.collapsed .feedback-section-body { display: none; }
     .feedback-section-body { padding-top: 8px; }
-    .feedback-subsection-title {
-      font-size: 11px; font-weight: 600; color: #8c959f; text-transform: uppercase;
-      letter-spacing: 0.04em; margin: 10px 0 6px;
-    }
-    .feedback-subsection-title:first-child { margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -705,7 +700,7 @@
               </div>
               <div id="extraction-patterns-body" hidden>
                 <div id="token-presets-list" style="padding: 8px 0 4px;"></div>
-                <p class="sub-note" style="padding: 0 14px 10px;">A shared library of reusable extraction templates. Use them as starting points when adding variables to an action — each copy is independent. Sources: <code>commentBody</code>, <code>commentAuthor</code>, <code>prTitle</code>, <code>prBranch</code>, <code>prNumber</code>, <code>prAuthor</code>, <code>repo</code>.</p>
+                <p class="sub-note" style="padding: 0 14px 10px;">A shared library of reusable extraction templates. Use them as starting points when adding variables to an action — each copy is independent. Sources: <code>commentBody</code>, <code>commentAuthor</code>, <code>prTitle</code>, <code>prBranch</code>, <code>prNumber</code>, <code>prAuthor</code>, <code>repo</code>. Use <strong>Transform</strong> steps inside each token to post-process the extracted value with chained regex replacements.</p>
               </div>
             </div>
           </div>
