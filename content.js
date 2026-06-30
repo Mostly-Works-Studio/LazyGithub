@@ -445,6 +445,128 @@ const STYLES = `
     from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0);    }
   }
+
+  /* PR Info Box */
+  @keyframes wd-info-slide-in {
+    from { transform: translateX(calc(100% + 24px)); opacity: 0.5; }
+    to   { transform: translateX(0);                 opacity: 1;   }
+  }
+  @keyframes wd-info-slide-out {
+    0%   { transform: translateX(0);                  opacity: 1;   }
+    16%  { transform: translateX(-8px);               opacity: 1;   }
+    100% { transform: translateX(calc(100% + 8px));   opacity: 0.6; }
+  }
+  #wd-info-box {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 99998;
+    display: flex;
+    flex-direction: row;
+    background: white;
+    border: 1px solid #d0d7de;
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.13);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #1f2328;
+    overflow: hidden;
+    transform: translateX(0);
+    transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #wd-info-box.wd-info-entering {
+    animation: wd-info-slide-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  #wd-info-box.wd-info-exiting {
+    animation: wd-info-slide-out 0.38s cubic-bezier(0.55, 0, 0.75, 0) both;
+  }
+  #wd-info-box.wd-info-collapsed { transform: translateX(calc(100% + 8px)); }
+  #wd-info-box:hover { box-shadow: 0 10px 30px rgba(0,0,0,0.18); }
+  #wd-info-box:not(.wd-info-collapsed):not(.wd-info-exiting):not(.wd-info-entering):hover {
+    transform: translateY(-2px);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  /* Expanded: pill on RIGHT edge; Collapsed: pill on LEFT edge (peeks from screen right) */
+  .wd-info-side-tab {
+    order: 2;
+    width: 16px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  #wd-info-box.wd-info-collapsed .wd-info-side-tab { order: 1; }
+  #wd-info-box.wd-info-collapsed .wd-info-body    { order: 2; }
+
+  .wd-info-side-pill {
+    display: flex;
+    transition: transform 0.3s ease, opacity 0.15s ease;
+  }
+  .wd-info-side-tab:hover .wd-info-side-pill { opacity: 0.55; }
+  #wd-info-box.wd-info-collapsed .wd-info-side-pill { transform: scaleX(-1); }
+
+  .wd-info-body {
+    order: 1;
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    overflow: hidden;
+    min-width: 190px;
+  }
+  .wd-info-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #57606a;
+    padding-bottom: 7px;
+    border-bottom: 1px solid #eaedef;
+    margin-bottom: 1px;
+  }
+
+  .wd-info-row { display: flex; align-items: flex-start; gap: 7px; }
+  .wd-info-row-icon { font-size: 12px; margin-top: 2px; flex-shrink: 0; }
+  .wd-info-row-content { min-width: 0; }
+  .wd-info-row-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #8c959f;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 1px;
+    line-height: 1;
+  }
+  .wd-info-row-value {
+    font-size: 12px;
+    color: #1f2328;
+    font-weight: 500;
+    word-break: break-all;
+    line-height: 1.35;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: color 0.15s ease;
+  }
+  .wd-info-row-value:hover { color: #0969da; }
+
+  @keyframes wd-spin { to { transform: rotate(360deg); } }
+  .wd-info-refresh-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    color: #8c959f;
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+    margin-left: 2px;
+    align-self: flex-end;
+    margin-bottom: 1px;
+  }
+  .wd-info-refresh-btn:hover { color: #0969da; }
+  .wd-info-refresh-btn:disabled { cursor: default; }
+  .wd-info-refresh-btn.wd-spinning { animation: wd-spin 0.8s linear infinite; color: #8c959f; }
 `;
 
 const styleEl = document.createElement('style');
@@ -563,6 +685,8 @@ function isPullRequestPage() {
   return /\/pull\/\d+/.test(location.pathname);
 }
 
+// Extracts the head branch name from the PR page DOM.
+// GitHub renders it in different elements depending on UI version.
 function attachPrActionButtons() {
   if (!isPullRequestPage()) return;
   if (isRepoExcluded()) return;
@@ -1327,11 +1451,153 @@ function isActionAuthorAllowed(caConfig, author) {
   return false;
 }
 
+// ── PR Info Box ───────────────────────────────────────────────────────────────
+
+function injectInfoBox() {
+  if (!(CONFIG.showPrInfoBox ?? true) || !isPullRequestPage()) {
+    const existing = document.getElementById('wd-info-box');
+    if (existing) existing.remove();
+    document.body.removeAttribute('data-wd-info-fetching');
+    return;
+  }
+
+  const pr = parsePrFromUrl();
+  if (!pr) return;
+
+  // Box already rendered or fetch already in flight
+  if (document.getElementById('wd-info-box')) return;
+  if (document.body.dataset.wdInfoFetching === pr.prNumber) return;
+  document.body.dataset.wdInfoFetching = pr.prNumber;
+
+  chrome.runtime.sendMessage({ type: 'getPrBranch', repo: pr.repo, prNumber: pr.prNumber }, info => {
+    document.body.removeAttribute('data-wd-info-fetching');
+    if (!info || document.getElementById('wd-info-box')) return;
+
+    const collapsed = localStorage.getItem('wd-info-box-collapsed') === '1';
+
+    const box = document.createElement('div');
+    box.id = 'wd-info-box';
+    if (collapsed) {
+      box.classList.add('wd-info-collapsed');
+    } else {
+      box.classList.add('wd-info-entering');
+      box.addEventListener('animationend', () => box.classList.remove('wd-info-entering'), { once: true });
+    }
+
+    const sideTab = document.createElement('div');
+    sideTab.className = 'wd-info-side-tab';
+    sideTab.title = 'LazyGitHub — click to toggle';
+
+    const sidePill = document.createElement('div');
+    sidePill.className = 'wd-info-side-pill';
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const chevronSvg = document.createElementNS(svgNS, 'svg');
+    chevronSvg.setAttribute('width', '10');
+    chevronSvg.setAttribute('height', '28');
+    chevronSvg.setAttribute('viewBox', '0 0 10 28');
+    chevronSvg.setAttribute('fill', 'none');
+    const chevronPath = document.createElementNS(svgNS, 'polyline');
+    chevronPath.setAttribute('points', '1.5,1 7.5,14 1.5,27');
+    chevronPath.setAttribute('stroke', 'rgba(0,0,0,0.25)');
+    chevronPath.setAttribute('stroke-width', '3');
+    chevronPath.setAttribute('stroke-linecap', 'round');
+    chevronPath.setAttribute('stroke-linejoin', 'round');
+    chevronSvg.appendChild(chevronPath);
+    sidePill.appendChild(chevronSvg);
+
+    sideTab.append(sidePill);
+    sideTab.addEventListener('click', () => {
+      if (box.classList.contains('wd-info-collapsed')) {
+        box.classList.remove('wd-info-collapsed');
+        localStorage.setItem('wd-info-box-collapsed', '0');
+      } else if (!box.classList.contains('wd-info-exiting')) {
+        box.classList.add('wd-info-exiting');
+        box.addEventListener('animationend', () => {
+          box.classList.remove('wd-info-exiting');
+          box.classList.add('wd-info-collapsed');
+        }, { once: true });
+        localStorage.setItem('wd-info-box-collapsed', '1');
+      }
+    });
+
+    const body = document.createElement('div');
+    body.className = 'wd-info-body';
+
+    const title = document.createElement('div');
+    title.className = 'wd-info-title';
+    const titleIcon = document.createElement('img');
+    titleIcon.src = chrome.runtime.getURL('icon16.png');
+    titleIcon.style.cssText = 'width:14px;height:14px;vertical-align:middle;margin-right:5px;border-radius:3px;';
+    title.append(titleIcon, 'LazyGitHub · PR Info');
+
+    function makeInfoRow(icon, label, value, url) {
+      const row = document.createElement('div');
+      row.className = 'wd-info-row';
+
+      const iconEl = document.createElement('span');
+      iconEl.className = 'wd-info-row-icon';
+      iconEl.textContent = icon;
+
+      const content = document.createElement('div');
+      content.className = 'wd-info-row-content';
+
+      const labelEl = document.createElement('div');
+      labelEl.className = 'wd-info-row-label';
+      labelEl.textContent = label;
+
+      const valueEl = document.createElement('div');
+      valueEl.className = 'wd-info-row-value';
+      valueEl.textContent = value;
+      valueEl.title = `Open ${label} page`;
+      valueEl.addEventListener('click', () => window.open(url, '_blank'));
+
+      content.append(labelEl, valueEl);
+      row.append(iconEl, content);
+      return row;
+    }
+
+    body.append(title);
+    if (CONFIG.prInfoBoxShowRepo    ?? true) body.append(makeInfoRow('📦', 'Repo',   info.repo,    info.repoUrl));
+    if (CONFIG.prInfoBoxShowAuthor  ?? true) body.append(makeInfoRow('👤', 'Author', info.author,  info.authorUrl));
+    if (CONFIG.prInfoBoxShowHead    ?? true) body.append(makeInfoRow('⬆', 'Head',   info.headRef, info.headUrl));
+
+    if (CONFIG.prInfoBoxShowBase ?? true) {
+      const baseRow = makeInfoRow('⬇', 'Base', info.baseRef, info.baseUrl);
+      const refreshBtn = document.createElement('button');
+      refreshBtn.className = 'wd-info-refresh-btn';
+      refreshBtn.title = 'Refresh base to latest commit';
+      refreshBtn.textContent = '↻';
+      refreshBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (refreshBtn.disabled) return;
+        refreshBtn.classList.add('wd-spinning');
+        refreshBtn.disabled = true;
+        chrome.runtime.sendMessage({ type: 'refreshPrBase', repo: pr.repo, prNumber: pr.prNumber }, res => {
+          refreshBtn.classList.remove('wd-spinning');
+          refreshBtn.disabled = false;
+          if (res?.success) {
+            showToast({ success: true,  message: 'Base branch refreshed to latest commit.' });
+          } else {
+            showToast({ success: false, message: `Failed to refresh base: ${res?.error ?? 'unknown error'}` });
+          }
+        });
+      });
+      baseRow.appendChild(refreshBtn);
+      body.appendChild(baseRow);
+    }
+
+    box.append(sideTab, body);
+    document.body.appendChild(box);
+  });
+}
+
 // ── Scanner (runs on load + DOM changes) ─────────────────────────────────────
 
 function scan() {
   attachPrActionButtons();
   document.querySelectorAll('a[href*="#issuecomment-"]').forEach(attachCommentButtons);
+  injectInfoBox();
 }
 
 function init() {
@@ -1350,6 +1616,7 @@ function init() {
       GLOBAL_CONFIG = changes.extensionConfig.newValue ?? DEFAULT_CONFIG;
       const pr      = parsePrFromUrl();
       CONFIG        = resolveConfig(GLOBAL_CONFIG, pr?.repo ?? '');
+      injectInfoBox();
     }
     if (changes.githubToken) {
       TOKEN_CONFIGURED = !!changes.githubToken.newValue;

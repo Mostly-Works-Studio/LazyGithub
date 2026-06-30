@@ -417,6 +417,51 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return;
   }
 
+  if (msg.type === 'getPrBranch') {
+    (async () => {
+      const { token } = await getStoredData();
+      if (!token) { sendResponse(null); return; }
+      try {
+        const pr = await githubRequest(`/repos/${msg.repo}/pulls/${msg.prNumber}`, token);
+        sendResponse({
+          repo:      pr.base?.repo?.full_name ?? msg.repo,
+          repoUrl:   pr.base?.repo?.html_url  ?? `https://github.com/${msg.repo}`,
+          headRef:   pr.head?.ref             ?? '',
+          headUrl:   pr.head?.repo?.html_url && pr.head?.ref
+                       ? `${pr.head.repo.html_url}/tree/${pr.head.ref}` : '',
+          baseRef:   pr.base?.ref             ?? '',
+          baseUrl:   pr.base?.repo?.html_url && pr.base?.ref
+                       ? `${pr.base.repo.html_url}/tree/${pr.base.ref}` : '',
+          author:    pr.user?.login           ?? '',
+          authorUrl: pr.user?.login ? `https://github.com/${pr.user.login}` : '',
+        });
+      } catch {
+        sendResponse(null);
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === 'refreshPrBase') {
+    (async () => {
+      const { token } = await getStoredData();
+      if (!token) { sendResponse({ success: false, error: 'No token' }); return; }
+      try {
+        const pr = await githubRequest(`/repos/${msg.repo}/pulls/${msg.prNumber}`, token);
+        const base = pr.base?.ref;
+        if (!base) { sendResponse({ success: false, error: 'Could not read base branch' }); return; }
+        await githubRequest(`/repos/${msg.repo}/pulls/${msg.prNumber}`, token, {
+          method: 'PATCH',
+          body: JSON.stringify({ base }),
+        });
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type === 'getWorkflowInputs') {
     (async () => {
       const { token } = await getStoredData();

@@ -38,7 +38,7 @@ LazyGitHub is a Chrome MV3 extension with three JavaScript execution contexts, e
 ```
 Global config → first matching Group (regex or exact) → per-Repo override
 ```
-`prActions` and `commentActions` arrays default to `replace` mode; set `prActionsMode: "extend"` or `commentActionsMode: "extend"` to append instead.
+`prActions` and `commentActions` arrays default to `replace` mode; set `prActionsMode: "extend"` or `commentActionsMode: "extend"` to append instead. `actionsMode: "extend"` applies to both arrays at once.
 
 **Internally**, the config stores all actions in a single `actions` array with a `trigger` field (`'prHeader'` or `'comment'`). The UI and README split these into `prActions` / `commentActions` for clarity, but `deepMergeConfig` in `content.js` translates between the two representations.
 
@@ -55,6 +55,7 @@ Before a message is sent to background, `content.js`:
 - `onMultiple: "first"` slices rows to one; `"all"` dispatches for every matched row (with a 1-second delay between dispatches).
 - If a regex has a capture group, group 1 is the value; otherwise the full match is used.
 - `token.skip` — if the extracted value is in this array, the entire row is discarded.
+- `token.replace` — one or more `{ pattern, flags?, with }` objects applied via `applyReplaceSteps` after the regex extracts a value. Each step runs `String.replace(new RegExp(pattern, flags ?? 'g'), with)` in sequence. A single step can be an object; multiple steps must be an array.
 - Deduplication is keyed on the full set of extracted `commentBody` token values — rows with identical values are dropped.
 
 **Template resolution** — `{placeholder}` substitution happens in `background.js` at dispatch time. `{input:"Label"}` prompts are collected and shown in a modal by `content.js` *before* the message is sent to background.
@@ -70,6 +71,11 @@ Key fields in `DEFAULT_CONFIG` (`config-defaults.js`):
   repoFilter: { mode: 'exclude', patterns: [] },
   tokenPresets: [],       // global-only reusable extraction templates
   stacks: [],             // global stack definitions: [{ id, label, color }]
+  showPrInfoBox:            true,   // floating PR info card in bottom-right corner
+  prInfoBoxShowRepo:        true,   // show repo name row
+  prInfoBoxShowAuthor:      true,   // show PR author row
+  prInfoBoxShowHead:        true,   // show head branch row
+  prInfoBoxShowBase:        true,   // show base branch row (with refresh button)
   prDropdownThreshold: 3,
   commentDropdownThreshold: 4,
   actions: [              // all actions in one array; trigger field distinguishes PR vs comment
@@ -86,6 +92,7 @@ Key fields in `DEFAULT_CONFIG` (`config-defaults.js`):
           regex: '',      // capture group 1 is the value; full match if no groups
           default: '',    // fallback if no match
           skip: [],       // discard row if extracted value is in this list
+          replace: { pattern: '', flags: 'g', with: '' }, // or array of these; applied after extraction
         }
       ],
       onMultiple: 'all' | 'first',
@@ -124,6 +131,8 @@ Injected elements in `content.js` use a `wd-` CSS class prefix:
 - `.wd-build-btn` — PR header action buttons (always visible, inline in the PR header)
 - `.wd-visible`, `.wd-loading`, `.wd-success`, `.wd-failure` — state classes applied to buttons
 
+**PR Info Box** (`#wd-info-box`) — a fixed floating card in the bottom-right corner injected by `injectInfoBox()`. It slides in with a spring animation on first render and collapses off-screen to show only the 16px side-tab when dismissed. Collapsed state persists in `localStorage` under `wd-info-box-collapsed`. The card shows up to 4 rows (repo, author, head branch, base branch) controlled by the `prInfoBoxShow*` config flags. The base branch row includes a refresh button that calls `refreshPrBase` to re-PATCH the PR base and resolve stale diffs. Extension assets (e.g. `icon16.png`) used inside content scripts must be listed in `web_accessible_resources` in `manifest.json`.
+
 ## Storage
 
 Config and token are stored in `chrome.storage.sync` under keys `githubToken` and `extensionConfig`. Changes hot-reload without a page refresh via a `chrome.storage.onChanged` listener in `content.js`.
@@ -153,4 +162,20 @@ All messages are sent from content script → background via `chrome.runtime.sen
 { type: 'openOptions', reason: 'no-token' | string }
 ```
 
-The background listener must `return true` from `onMessage` for async responses (`action` and `getWorkflowInputs`).
+**`getPrBranch`** — fetch PR metadata for the info box:
+```js
+// content → background
+{ type: 'getPrBranch', repo, prNumber }
+// background → content (response)
+{ repo, repoUrl, headRef, headUrl, baseRef, baseUrl, author, authorUrl } | null
+```
+
+**`refreshPrBase`** — re-PATCH the PR base to force diff recalculation against the latest HEAD:
+```js
+// content → background
+{ type: 'refreshPrBase', repo, prNumber }
+// background → content (response)
+{ success: true } | { success: false, error: string }
+```
+
+The background listener must `return true` from `onMessage` for async responses (`action`, `getWorkflowInputs`, `getPrBranch`, `refreshPrBase`).

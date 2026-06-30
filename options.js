@@ -220,6 +220,10 @@ document.getElementById('additional-settings-section').querySelector('.feedback-
 document.getElementById('repo-filter-section').querySelector('.form-section-header').addEventListener('click', () => {
   document.getElementById('repo-filter-section').classList.toggle('collapsed');
 });
+
+document.getElementById('pr-info-box-section').querySelector('.form-section-header').addEventListener('click', () => {
+  document.getElementById('pr-info-box-section').classList.toggle('collapsed');
+});
 const reposCount         = document.getElementById('repos-count');
 
 let lastSavedConfig = DEFAULT_CONFIG;
@@ -1830,6 +1834,13 @@ function configToForm(config) {
   document.getElementById('pr-dropdown-label').value          = config.prDropdownLabel          ?? '';
   document.getElementById('comment-dropdown-label').value     = config.commentDropdownLabel     ?? '';
 
+  // PR Info Box
+  document.getElementById('show-pr-info-box').checked         = config.showPrInfoBox        ?? true;
+  document.getElementById('pr-info-box-show-repo').checked    = config.prInfoBoxShowRepo    ?? true;
+  document.getElementById('pr-info-box-show-author').checked  = config.prInfoBoxShowAuthor  ?? true;
+  document.getElementById('pr-info-box-show-head').checked    = config.prInfoBoxShowHead    ?? true;
+  document.getElementById('pr-info-box-show-base').checked    = config.prInfoBoxShowBase    ?? true;
+
   // Split actions by trigger into the two visual sections
   const prActions      = (config.actions ?? []).filter(a => a.trigger !== 'comment');
   const commentActions = (config.actions ?? []).filter(a => a.trigger === 'comment');
@@ -1862,6 +1873,11 @@ function formToGlobalConfig() {
       patterns: readTagList(document.getElementById('repo-filter-list')),
     },
     stacks:               [...stacksList.querySelectorAll(':scope > .deploy-card')].map(c => c._read()),
+    showPrInfoBox:            document.getElementById('show-pr-info-box').checked,
+    prInfoBoxShowRepo:        document.getElementById('pr-info-box-show-repo').checked,
+    prInfoBoxShowAuthor:      document.getElementById('pr-info-box-show-author').checked,
+    prInfoBoxShowHead:        document.getElementById('pr-info-box-show-head').checked,
+    prInfoBoxShowBase:        document.getElementById('pr-info-box-show-base').checked,
     prDropdownThreshold:      (v => isNaN(v) ? 3 : v)(parseInt(document.getElementById('pr-dropdown-threshold').value,      10)),
     commentDropdownThreshold: (v => isNaN(v) ? 4 : v)(parseInt(document.getElementById('comment-dropdown-threshold').value,  10)),
     prDropdownLabel:          document.getElementById('pr-dropdown-label').value.trim()      || undefined,

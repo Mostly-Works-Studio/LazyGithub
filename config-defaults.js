@@ -5,6 +5,11 @@ const DEFAULT_CONFIG = {
   },
   tokenPresets: [],
   stacks: [],
+  showPrInfoBox:            true,
+  prInfoBoxShowRepo:        true,
+  prInfoBoxShowAuthor:      true,
+  prInfoBoxShowHead:        true,
+  prInfoBoxShowBase:        true,
   prDropdownThreshold:      3,
   commentDropdownThreshold: 4,
   actions: [
