@@ -228,10 +228,40 @@ const reposCount         = document.getElementById('repos-count');
 
 let lastSavedConfig = DEFAULT_CONFIG;
 
+let statusTimer = null;
 function showConfigStatus(message, type) {
   configStatusMsg.textContent = message;
   configStatusMsg.className   = `status ${type}`;
-  setTimeout(() => { configStatusMsg.textContent = ''; configStatusMsg.className = 'status'; }, 4000);
+  if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
+  // Success is transient; errors persist until the next edit or save.
+  if (type === 'success') {
+    statusTimer = setTimeout(() => {
+      configStatusMsg.textContent = '';
+      configStatusMsg.className = 'status';
+      statusTimer = null;
+    }, 4000);
+  }
+}
+function clearConfigStatus() {
+  if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
+  configStatusMsg.textContent = '';
+  configStatusMsg.className = 'status';
+}
+
+// ── Dirty-state tracking ───────────────────────────────────────────────────────
+let isDirty = false;
+const unsavedIndicator = document.getElementById('unsaved-indicator');
+function markDirty() {
+  if (isDirty) return;
+  isDirty = true;
+  saveConfigBtn.classList.add('btn--attention');
+  if (unsavedIndicator) unsavedIndicator.hidden = false;
+  clearConfigStatus();
+}
+function markClean() {
+  isDirty = false;
+  saveConfigBtn.classList.remove('btn--attention');
+  if (unsavedIndicator) unsavedIndicator.hidden = true;
 }
 
 function switchToTab(tabName) {
@@ -278,13 +308,36 @@ function mkCheckbox(checked) {
   c.type = 'checkbox'; c.checked = checked;
   return c;
 }
+// Wraps an existing checkbox input in the green switch markup.
+function wrapSwitch(cb) {
+  const sw = document.createElement('span');
+  sw.className = 'switch';
+  const track = document.createElement('span'); track.className = 'switch-track';
+  const thumb = document.createElement('span'); thumb.className = 'switch-thumb';
+  sw.append(cb, track, thumb);
+  return sw;
+}
+// Builds a labelled switch: text first, then the toggle (matches .inline-toggle).
 function mkCheckboxLabel(cb, text) {
   const l = document.createElement('label');
-  l.className = 'checkbox-label';
-  const span = document.createElement('span');
-  span.textContent = ' ' + text;
-  l.append(cb, span);
+  l.className = 'inline-toggle';
+  l.append(document.createTextNode(text + ' '), wrapSwitch(cb));
   return l;
+}
+// Segmented pill control backed by hidden radios. opts: [{value,label}]. Returns
+// the container; read the choice via container.querySelector('input:checked').value.
+function mkSegmented(name, opts, selected) {
+  const wrap = mkDiv('segmented');
+  for (const o of opts) {
+    const lbl = document.createElement('label');
+    const input = document.createElement('input');
+    input.type = 'radio'; input.name = name; input.value = o.value;
+    if (o.value === selected) input.checked = true;
+    const span = document.createElement('span'); span.textContent = o.label;
+    lbl.append(input, span);
+    wrap.append(lbl);
+  }
+  return wrap;
 }
 function buildColorPair(initColor) {
   const group = mkDiv('color-group');
@@ -1222,11 +1275,11 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
     isComment = () => fixedTrigger === 'comment';
   } else {
     const triggerName = 'trigger-' + Math.random().toString(36).slice(2);
-    const triggerPr = document.createElement('input'); triggerPr.type = 'radio'; triggerPr.name = triggerName; triggerPr.value = 'prHeader';
-    triggerCa = document.createElement('input'); triggerCa.type = 'radio'; triggerCa.name = triggerName; triggerCa.value = 'comment';
-    if (initTrigger === 'comment') triggerCa.checked = true; else triggerPr.checked = true;
-    const triggerGroup = mkDiv('checkbox-group');
-    triggerGroup.append(mkCheckboxLabel(triggerPr, 'PR Header'), mkCheckboxLabel(triggerCa, 'Comment'));
+    const triggerGroup = mkSegmented(triggerName, [
+      { value: 'prHeader', label: 'PR Header' },
+      { value: 'comment',  label: 'Comment' },
+    ], initTrigger === 'comment' ? 'comment' : 'prHeader');
+    triggerCa = triggerGroup.querySelector('input[value="comment"]');
     body.append(cardRow('Trigger', triggerGroup));
     isComment = () => triggerCa.checked;
   }
@@ -1270,11 +1323,11 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
 
   // onMultiple
   const omName  = 'om-' + Math.random().toString(36).slice(2);
-  const omFirst = document.createElement('input'); omFirst.type = 'radio'; omFirst.name = omName; omFirst.value = 'first';
-  const omAll   = document.createElement('input'); omAll.type   = 'radio'; omAll.name   = omName; omAll.value   = 'all';
-  if ((action.onMultiple ?? 'all') === 'first') omFirst.checked = true; else omAll.checked = true;
-  const omGroup = mkDiv('on-multiple-group');
-  omGroup.append(mkCheckboxLabel(omAll, 'All matches'), mkCheckboxLabel(omFirst, 'First match only'));
+  const omGroup = mkSegmented(omName, [
+    { value: 'all',   label: 'All matches' },
+    { value: 'first', label: 'First match only' },
+  ], (action.onMultiple ?? 'all') === 'first' ? 'first' : 'all');
+  const omFirst = omGroup.querySelector('input[value="first"]');
 
   // Tokens
   const allowCommentSources = initTrigger === 'comment';
@@ -1494,7 +1547,7 @@ function makeOverrideSection(title, isActive, buildFn, { initMode = 'replace', f
   headerLabel.className = 'override-section-header';
   const toggle  = mkCheckbox(isActive); toggle.className = 'override-toggle';
   const titleEl = mkEl('span', '', title);
-  headerLabel.append(toggle, titleEl);
+  headerLabel.append(wrapSwitch(toggle), titleEl);
 
   // Right-side group — always present; shows 'inherited' or override controls
   const headerRight = mkDiv('override-header-right');
@@ -1893,6 +1946,7 @@ function loadConfigIntoEditors(config) {
   loadGroupsFromConfig(groups);
   loadReposFromConfig(repos);
   updateTabCounts();
+  markClean();
 }
 
 
@@ -1900,6 +1954,30 @@ function loadConfigIntoEditors(config) {
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => switchToTab(btn.dataset.tab));
+});
+
+// ── Dirty tracking + save shortcut ─────────────────────────────────────────────
+
+const configSection = document.getElementById('config-section');
+if (configSection) {
+  const onConfigEdit = e => {
+    // Ignore clicks/keys on the action bar buttons themselves.
+    if (e.target.closest('.config-action-bar')) return;
+    markDirty();
+  };
+  configSection.addEventListener('input',  onConfigEdit);
+  configSection.addEventListener('change', onConfigEdit);
+}
+
+window.addEventListener('beforeunload', e => {
+  if (isDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+    e.preventDefault();
+    saveConfigBtn.click();
+  }
 });
 
 // ── Load from storage ─────────────────────────────────────────────────────────
@@ -1972,6 +2050,7 @@ function showJsonModal() {
       return;
     }
     loadConfigIntoEditors(parsed);
+    markDirty();  // imported but not yet persisted
     statusEl.textContent = 'Loaded into form. Review and click Save Config to persist.';
     statusEl.className = 'status success';
   });
@@ -2130,11 +2209,16 @@ saveConfigBtn_el.addEventListener('click', () => {
   const fullConfig = { ...globalPart, groups: groupsPart, repos: reposPart };
 
   const err = validateConfig(fullConfig);
-  if (err) { highlightValidationError(err); return; }
+  if (err) {
+    highlightValidationError(err);
+    showConfigStatus(err.message || 'Please fix the highlighted error before saving.', 'error');
+    return;
+  }
 
   chrome.storage.sync.set({ extensionConfig: fullConfig }, () => {
     lastSavedConfig = fullConfig;
     updateTabCounts();
+    markClean();
     showConfigStatus('Config saved. Reload your GitHub tab for changes to take effect.', 'success');
   });
 });

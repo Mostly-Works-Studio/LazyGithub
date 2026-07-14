@@ -221,7 +221,7 @@
     .color-group .field-input { flex: 1; width: auto; }
 
     /* ── Checkboxes ── */
-    .checkbox-group { display: flex; gap: 16px; padding-top: 3px; }
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-top: 3px; }
     .checkbox-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #1f2328; cursor: pointer; }
 
     /* ── Toggle switch ── */
@@ -243,6 +243,21 @@
     /* ── Inline toggle fields (label + switch pairs wrapping in a row) ── */
     .inline-toggle-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
     .inline-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: #57606a; cursor: pointer; }
+
+    /* ── Segmented control (mutually-exclusive choices backed by radios) ── */
+    .segmented { display: inline-flex; border: 1px solid #d0d7de; border-radius: 7px; overflow: hidden; background: #f6f8fa; }
+    .segmented label {
+      position: relative; display: inline-flex; align-items: center; justify-content: center;
+      padding: 4px 12px; font-size: 12px; font-weight: 500; color: #57606a;
+      cursor: pointer; user-select: none; white-space: nowrap;
+      border-left: 1px solid #d0d7de; transition: background 0.15s, color 0.15s;
+    }
+    .segmented label:first-child { border-left: none; }
+    .segmented input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .segmented label:hover { background: #eef1f4; color: #1f2328; }
+    .segmented label:has(input:checked) { background: #0969da; color: #fff; }
+    .segmented label:has(input:checked):hover { background: #0860ca; }
+    .segmented label:has(input:focus-visible) { box-shadow: inset 0 0 0 2px rgba(9,105,218,0.4); }
 
 
     /* ── Action sub-forms ── */
@@ -343,6 +358,30 @@
     .inline-error-msg { font-size: 12px; color: #cf222e; background: #fff5f5; border: 1px solid #ffcdd2; border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; }
 
     .footer { text-align: center; font-size: 12px; color: #656d76; }
+
+    /* ── Sticky config action bar ── */
+    .config-action-bar {
+      position: sticky; bottom: 0; z-index: 20;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      margin: 16px -32px 0; padding: 14px 32px;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: saturate(180%) blur(6px);
+      border-top: 1px solid #d0d7de;
+    }
+    .config-action-bar .status { margin-top: 0; text-align: right; }
+    .unsaved-indicator {
+      margin-left: auto;
+      font-size: 12px; font-weight: 500; color: #9a6700;
+      display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    }
+    .unsaved-indicator[hidden] + .status { margin-left: auto; }
+    .unsaved-indicator::before { content: '●'; font-size: 9px; color: #d4a72c; }
+    .btn--attention {
+      background: #1f883d; border-color: #1a7f37; color: #fff;
+      box-shadow: 0 0 0 3px rgba(31,136,61,0.18);
+    }
+    .btn--attention:hover { background: #1a7f37; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
 
     /* ── Token cards (per-action token list) ── */
     .token-list { margin-bottom: 6px; }
@@ -515,6 +554,7 @@
     .stack-assign-empty { padding: 8px 10px; font-size: 12px; color: #8c959f; text-align: center; }
     .stack-assign-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
+    @keyframes wd-highlight-flash {
       0%   { box-shadow: 0 0 0 3px rgba(9,105,218,0.35), inset 0 0 0 9999px rgba(9,105,218,0.08); }
       100% { box-shadow: none; }
     }
@@ -601,7 +641,7 @@
     <hr class="divider" />
 
     <!-- ── Config ── -->
-    <div class="section">
+    <div class="section" id="config-section">
       <div class="section-title">
         <label>Extension Configuration</label>
       </div>
@@ -670,9 +710,9 @@
               <div class="form-section-body">
                 <div class="field-row">
                   <span class="field-label">Mode</span>
-                  <div style="display:flex; gap:16px; flex-wrap:wrap; padding-top:2px;">
-                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="exclude" checked> Exclude matching</label>
-                    <label class="checkbox-label"><input type="radio" name="repo-filter-mode" value="include"> Include only matching</label>
+                  <div class="segmented" style="width:fit-content;">
+                    <label><input type="radio" name="repo-filter-mode" value="exclude" checked><span>Exclude matching</span></label>
+                    <label><input type="radio" name="repo-filter-mode" value="include"><span>Include only matching</span></label>
                   </div>
                 </div>
                 <div class="field-row field-row--top" style="margin-top:6px;">
@@ -800,14 +840,14 @@
       </div>
 
       <!-- Shared actions -->
-      <div class="input-row" style="margin-top: 10px;">
+      <div class="config-action-bar">
         <button class="btn btn-primary"   id="save-config-btn">Save Config</button>
         <button class="btn btn-secondary" id="discard-config-btn">Discard Changes</button>
         <button class="btn btn-danger"    id="reset-config-btn">Reset to Defaults</button>
         <button class="btn btn-secondary" id="json-config-btn">{ } JSON</button>
+        <span class="unsaved-indicator" id="unsaved-indicator" hidden>Unsaved changes</span>
+        <p class="status" id="config-status-msg"></p>
       </div>
-
-      <p class="status" id="config-status-msg"></p>
     </div>
 
     <hr class="divider" />
