@@ -45,9 +45,9 @@ Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/bkc
 
 ## Configuration
 
-The settings page splits configuration into three tabs. Click **Save Config** to persist all tabs at once. **Discard Changes** reverts to the last saved state. **Reset to Defaults** restores the factory config. **{ } JSON** opens a modal to copy your config as JSON or paste one to import.
+The settings page has a left sidebar that splits configuration into panes — **Token**, **PR Actions**, **Comment Actions**, **Advanced**, and the **Groups** / **Repos** overrides. Click **Save changes** to persist everything at once. **Discard** reverts to the last saved state. **Reset to defaults** restores the factory config. **{ } Import / export JSON** opens a modal to copy your config as JSON or paste one to import. Saved changes apply to open GitHub tabs automatically — no reload needed.
 
-Sections and action cards are collapsed by default — click a header to expand it.
+Action cards are collapsed by default — click a header to expand it.
 
 ### GitHub Token
 
@@ -62,9 +62,9 @@ Generate a token at [github.com/settings/tokens](https://github.com/settings/tok
 
 ---
 
-### Global tab
+### Global config
 
-Applies to all repos unless overridden by a group or repo entry.
+Applies to all repos unless overridden by a group or repo entry. In the settings page this is split across the **PR Actions**, **Comment Actions**, and **Advanced** panes; the fields below are stored together as the global config.
 
 ```jsonc
 {
@@ -141,7 +141,7 @@ Applies to all repos unless overridden by a group or repo entry.
 
 ---
 
-### Groups tab
+### Groups pane
 
 A list of named groups. Each group applies to repos matched by exact name or regex — **first matching group wins**. Toggle which sections to override; unselected sections inherit from global.
 
@@ -184,7 +184,7 @@ When you enable an override for the first time, the form auto-fills from the res
 
 ---
 
-### Repos tab
+### Repos pane
 
 Per-repo overrides using the exact `owner/repo` name (no regex). Overrides both global and any matching group. A repo listed here always bypasses `repoFilter`.
 
@@ -423,7 +423,7 @@ There is no build step — the extension is plain JavaScript.
 | `manifest.json` | Chrome extension manifest (MV3) |
 | `content.js` | Injected into GitHub pages — scans PR pages, resolves config, injects buttons, handles `{input:"..."}` prompts |
 | `background.js` | Service worker — GitHub API calls, config layering, action executor for all four action types |
-| `options.html` | Settings page UI — tabbed editor (Global, Groups, Repos), JSON modal |
+| `options.html` | Settings page UI — sidebar editor (Token, PR Actions, Comment Actions, Advanced, Groups, Repos), JSON modal |
 | `options.js` | Settings page logic — card builders, drag-sort, validation, save/discard/reset/JSON |
 | `onboarding.html` | First-run onboarding page |
 | `onboarding.js` | Onboarding logic — step progression and inline token validation |

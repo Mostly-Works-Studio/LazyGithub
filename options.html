@@ -5,260 +5,423 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LazyGitHub — Settings</title>
   <style>
+    /* ─────────────────────────────────────────────────────────────────────────
+       LazyGitHub — themed to the app icon: sleeping cat in a purple nightcap
+       on a sky-blue disc. Indigo command-rail · warm paper · nightcap-purple accent
+    ───────────────────────────────────────────────────────────────────────── */
+    :root {
+      --ink:          #141a33;   /* rail + primary text (cat-outline indigo) */
+      --ink-2:        #1e2545;   /* rail raised surfaces           */
+      --ink-line:     #2c3455;   /* rail hairlines                 */
+      --accent:        #7c53e0;  /* primary accent (nightcap purple) */
+      --accent-strong: #6a41cf;  /* accent hover / pressed         */
+      --accent-soft:   #f2ecfd;  /* accent tint on light surfaces  */
+      --sky:           #6eb9ff;  /* icon disc blue — secondary hue */
+      --paper:        #fbfaf8;   /* workspace background           */
+      --surface:      #ffffff;   /* cards                          */
+      --line:         #e7e2db;   /* warm hairline borders          */
+      --line-soft:    #f0ece6;   /* faint inner dividers           */
+      --text:         #1f2328;   /* body text                      */
+      --muted:        #6b6560;   /* secondary text                 */
+      --faint:        #9a938c;   /* tertiary text                  */
+      --green:        #1a7f37;
+      --green-bg:     #dafbe1;
+      --green-line:   #aceebb;
+      --red:          #cf222e;
+      --amber:        #9a6700;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --shadow-card: 0 1px 2px rgba(20,26,51,0.04), 0 1px 3px rgba(20,26,51,0.06);
+      --rail-w: 268px;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     [hidden] { display: none !important; }
 
+    html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-family: var(--sans);
       font-size: 14px;
-      color: #1f2328;
-      background: #f6f8fa;
+      color: var(--text);
+      background: var(--paper);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-strong); text-decoration: underline; }
+    code {
+      font-family: var(--mono);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      padding: 1px 5px; border-radius: 4px; font-size: 11.5px;
+    }
+
+    /* ── Shell ─────────────────────────────────────────────────────────────── */
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--rail-w) minmax(0, 1fr);
       min-height: 100vh;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 48px 5%;
     }
 
-    .card {
-      background: white;
-      border: 1px solid #d0d7de;
-      border-radius: 10px;
-      padding: 32px;
-      width: 100%;
-      max-width: clamp(640px, 80vw, 1100px);
+    /* ── Command rail ──────────────────────────────────────────────────────── */
+    .rail {
+      position: sticky; top: 0; align-self: start;
+      height: 100vh; overflow-y: auto;
+      background: var(--ink);
+      color: #cdd3da;
+      display: flex; flex-direction: column;
+      padding: 22px 14px 16px;
+      border-right: 1px solid var(--ink-line);
+    }
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      padding: 0 8px 20px;
+    }
+    .brand-mark {
+      width: 34px; height: 34px; flex-shrink: 0;
+      border-radius: 50%; display: block;
+      box-shadow: 0 2px 10px rgba(124,83,224,0.35);
+    }
+    .brand-name { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+    .brand-tag  { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin-top: 1px; }
+
+    .nav-group { margin-bottom: 6px; }
+    .nav-group + .nav-group { margin-top: 12px; }
+    .nav-label {
+      font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
+      text-transform: uppercase; color: #6f7883;
+      padding: 6px 10px 6px; user-select: none;
     }
 
-    .card-header { margin-bottom: 28px; }
-    h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
-    .subtitle { color: #656d76; line-height: 1.5; }
-
-    /* ── Section ── */
-    .section { margin-bottom: 0; }
-    .section-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .section-title label { font-weight: 600; font-size: 14px; }
-    .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 12px; line-height: 1.6; }
-    .badge-success { background: #dafbe1; color: #1a7f37; border: 1px solid #aceebb; }
-
-    .hint { font-size: 12px; color: #656d76; margin-bottom: 10px; line-height: 1.5; }
-    .hint a { color: #0969da; text-decoration: none; }
-    .hint a:hover { text-decoration: underline; }
-
-    /* ── Token configured state ── */
-    .token-configured-box {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 12px 16px;
-      background: #f6fbf8;
-      border: 1px solid #aceebb;
-      border-radius: 8px;
+    /* Nav items reuse .tab-btn / data-tab so the existing tab engine drives them */
+    .rail .tab-btn {
+      position: relative;
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      padding: 8px 10px 8px 12px; margin-bottom: 1px;
+      border: none; background: none; cursor: pointer;
+      font-family: var(--sans); font-size: 13.5px; font-weight: 500;
+      color: #c2c8cf; text-align: left; border-radius: 7px;
+      transition: background 0.14s, color 0.14s;
     }
-    .token-info { display: flex; align-items: center; gap: 10px; }
-    .token-check {
-      width: 32px; height: 32px; border-radius: 50%;
-      background: #1a7f37; color: white;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 15px; flex-shrink: 0;
+    .rail .tab-btn::before {
+      content: ''; position: absolute; left: 3px; top: 50%;
+      width: 3px; height: 0; border-radius: 3px;
+      background: var(--accent); transform: translateY(-50%);
+      transition: height 0.18s ease;
     }
-    .token-info-text .token-label { font-weight: 600; font-size: 13px; color: #1a7f37; }
-    .token-info-text .token-mask  { font-size: 12px; color: #656d76; font-family: monospace; margin-top: 2px; }
-    .token-actions { display: flex; gap: 8px; flex-shrink: 0; }
-
-    /* ── Token input ── */
-    .input-row { display: flex; gap: 8px; }
-    #token-input-section input[type="password"] {
-      flex: 1; padding: 6px 10px; border: 1px solid #d0d7de;
-      border-radius: 6px; font-size: 13px; font-family: monospace;
-      outline: none; transition: border-color 0.2s;
+    .rail .tab-btn:hover { background: var(--ink-2); color: #eef1f4; }
+    .rail .tab-btn--active { background: var(--ink-2); color: #fff; }
+    .rail .tab-btn--active::before { height: 18px; }
+    .rail .tab-btn .nav-ico {
+      width: 17px; height: 17px; flex-shrink: 0; opacity: 0.85;
+      display: grid; place-items: center;
     }
-    #token-input-section input:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
-
-    textarea {
-      width: 100%; padding: 8px 10px; border: 1px solid #d0d7de;
-      border-radius: 6px; font-size: 12px; font-family: monospace;
-      outline: none; resize: vertical; line-height: 1.5; transition: border-color 0.2s;
+    .rail .tab-btn .nav-ico svg { width: 16px; height: 16px; display: block; }
+    .rail .tab-btn--active .nav-ico { opacity: 1; color: var(--accent); }
+    .nav-text { flex: 1; }
+    .nav-count {
+      font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+      background: var(--ink-line); color: #c2c8cf;
+      border-radius: 10px; padding: 1px 7px; line-height: 1.6; min-width: 20px; text-align: center;
     }
-    textarea:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
+    .nav-count:empty { display: none; }
+    /* Token connection dot on the nav item */
+    .nav-status { width: 7px; height: 7px; border-radius: 50%; background: #4c545d; flex-shrink: 0; transition: background 0.15s, box-shadow 0.15s; }
+    .tab-btn[data-tab="token"].nav-connected .nav-status { background: #2ec16b; box-shadow: 0 0 0 3px rgba(46,193,107,0.18); }
 
-    /* ── Buttons ── */
-    .btn {
-      padding: 6px 14px; border-radius: 6px; font-size: 13px;
-      font-weight: 500; cursor: pointer; border: 1px solid;
-      white-space: nowrap; transition: background 0.15s;
+    .rail-spacer { flex: 1; min-height: 12px; }
+    .rail-divider { height: 1px; background: var(--ink-line); margin: 10px 8px; }
+    .rail-btn {
+      display: flex; align-items: center; gap: 9px; width: 100%;
+      padding: 8px 12px; border: 1px solid var(--ink-line); background: none;
+      border-radius: 7px; cursor: pointer; color: #c2c8cf;
+      font-family: var(--mono); font-size: 12px; letter-spacing: 0.02em;
+      transition: background 0.14s, color 0.14s, border-color 0.14s;
     }
-    .btn-primary   { background: #1f883d; border-color: #1a7f37; color: white; }
-    .btn-primary:hover { background: #1a7f37; }
-    .btn-secondary { background: white; border-color: #d0d7de; color: #1f2328; }
-    .btn-secondary:hover { background: #f3f4f6; }
-    .btn-danger    { background: white; border-color: #cf222e; color: #cf222e; }
-    .btn-danger:hover { background: #fff0ee; }
-    .btn-sm { padding: 4px 10px; font-size: 12px; }
-    .btn-xs { padding: 2px 7px;  font-size: 11px; }
+    .rail-btn:hover { background: var(--ink-2); color: #fff; border-color: #454d56; }
+    .rail-foot { padding: 12px 8px 2px; font-size: 11px; color: #6f7883; line-height: 1.7; }
+    .rail-foot a { color: #98a1ab; }
+    .rail-foot a:hover { color: #fff; }
 
-    /* ── Status ── */
-    .status { margin-top: 12px; font-size: 13px; min-height: 20px; }
-    .status.success { color: #1a7f37; }
-    .status.error   { color: #cf222e; }
+    /* ── Workspace ─────────────────────────────────────────────────────────── */
+    .workspace {
+      display: flex; flex-direction: column;
+      min-height: 100vh; min-width: 0;
+      background:
+        radial-gradient(1200px 520px at 100% 0%, rgba(124,83,224,0.06), transparent 60%),
+        radial-gradient(900px 460px at 60% 110%, rgba(110,185,255,0.06), transparent 55%),
+        var(--paper);
+    }
+    .workspace-scroll {
+      flex: 1;
+      padding: 40px clamp(24px, 5vw, 72px) 40px;
+      max-width: 1180px; width: 100%; margin: 0 auto;
+    }
 
-    .divider { border: none; border-top: 1px solid #d0d7de; margin: 28px 0; }
+    /* Pane header: mono eyebrow · heading · one-line description */
+    .pane-head { margin-bottom: 22px; }
+    .eyebrow {
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--accent); font-weight: 600;
+    }
+    .pane-head h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 5px; }
+    .pane-head p { color: var(--muted); line-height: 1.55; }
 
-    /* ── Scopes box ── */
-    .scopes { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 14px; }
-    .scopes h2 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-    .scopes ul  { padding-left: 18px; }
-    .scopes li  { font-size: 12px; color: #656d76; margin-bottom: 4px; line-height: 1.5; }
-    code { font-family: monospace; background: #eaeef2; padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+    /* Section title used within panes (e.g. list headers) */
+    .list-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin: 0 0 10px;
+    }
+    .list-head-text h2 { font-size: 15px; font-weight: 650; }
+    .list-head-text p { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-top: 2px; max-width: 70ch; }
 
+    .pane-note {
+      font-size: 12px; color: var(--muted); line-height: 1.6;
+      margin-top: 8px;
+    }
+    .pane-note code { font-size: 11px; }
+
+    /* ── Precedence bar (signature element) ────────────────────────────────── */
+    .precedence {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+      padding: 12px 16px; margin-bottom: 20px;
+      background: var(--ink); border-radius: 10px;
+      font-family: var(--mono); font-size: 12px; color: #c2c8cf;
+    }
+    .precedence .prec-flow { display: inline-flex; align-items: center; gap: 8px; }
+    .prec-stage {
+      padding: 3px 10px; border-radius: 6px;
+      background: var(--ink-2); color: #98a1ab; border: 1px solid transparent;
+      letter-spacing: 0.02em;
+    }
+    .prec-stage.is-active {
+      background: var(--accent); color: #fff; border-color: var(--accent-strong);
+      box-shadow: 0 0 0 3px rgba(124,83,224,0.22);
+    }
+    .prec-arrow { color: #545c65; }
+    .prec-rule { margin-left: auto; color: #7d8892; font-size: 11px; letter-spacing: 0.02em; }
+    .prec-rule b { color: #c2c8cf; font-weight: 600; }
+
+    /* ── Open reason banner ────────────────────────────────────────────────── */
     .open-reason-banner {
       display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px;
-      background: #fff8c5; border: 1px solid #e3b341; border-radius: 8px;
-      margin-bottom: 20px; font-size: 13px; color: #633c00; line-height: 1.5;
+      background: #fff8ef; border: 1px solid #f0c98a; border-left: 3px solid var(--accent);
+      border-radius: 10px; margin-bottom: 24px; font-size: 13px; color: #7a4a12; line-height: 1.5;
     }
-    .open-reason-banner-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .open-reason-banner-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
 
-    /* ── Config tabs ── */
-    .config-tabs { display: flex; border-bottom: 1px solid #d0d7de; margin-bottom: 16px; }
-    .tab-btn {
-      padding: 8px 16px; border: none; background: none; font-size: 13px;
-      font-weight: 500; color: #656d76; cursor: pointer;
-      border-bottom: 2px solid transparent; margin-bottom: -1px;
-      display: flex; align-items: center; gap: 6px;
-      transition: color 0.15s, border-color 0.15s;
+    /* ── Token pane ────────────────────────────────────────────────────────── */
+    .panel-card {
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: 12px; padding: 20px; box-shadow: var(--shadow-card);
+      margin-bottom: 16px;
     }
-    .tab-btn:hover { color: #1f2328; }
-    .tab-btn--active { color: #1f2328; border-bottom-color: #0969da; font-weight: 600; }
-    .tab-count {
-      font-size: 11px; font-weight: 600; background: #0969da;
-      color: white; border-radius: 10px; padding: 1px 6px; line-height: 1.6;
+    .scopes h2 { font-size: 12.5px; font-weight: 650; margin-bottom: 8px; }
+    .scopes ul { padding-left: 18px; }
+    .scopes li { font-size: 12.5px; color: var(--muted); margin-bottom: 5px; line-height: 1.55; }
+    .scopes .note { font-size: 11.5px; color: var(--muted); margin-top: 10px; line-height: 1.55; }
+
+    .token-configured-box {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px; background: #f4fbf6;
+      border: 1px solid var(--green-line); border-radius: 10px;
     }
-    .tab-count:empty { display: none; }
-    .tab-hint {
-      font-size: 12px; color: #656d76; background: #f6f8fa;
-      border: 1px solid #d0d7de; border-left: 3px solid #0969da;
-      border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; line-height: 1.6;
+    .token-info { display: flex; align-items: center; gap: 12px; }
+    .token-check {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--green); color: white; flex-shrink: 0;
+      display: grid; place-items: center; font-size: 16px;
     }
-    .tab-actions { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+    .token-info-text .token-label { font-weight: 650; font-size: 13px; color: var(--green); }
+    .token-info-text .token-mask  { font-size: 12px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+    .token-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    .input-row { display: flex; gap: 8px; }
+    #token-input {
+      flex: 1; padding: 9px 12px; border: 1px solid var(--line);
+      border-radius: 8px; font-size: 13px; font-family: var(--mono);
+      outline: none; transition: border-color 0.15s, box-shadow 0.15s; background: var(--surface);
+    }
+    #token-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,83,224,0.15); }
+
+    .status { margin-top: 12px; font-size: 13px; min-height: 20px; }
+    .status.success { color: var(--green); }
+    .status.warn    { color: var(--amber); }
+    .status.error   { color: var(--red); }
+
+    /* ── Buttons ───────────────────────────────────────────────────────────── */
+    .btn {
+      padding: 7px 15px; border-radius: 8px; font-size: 13px;
+      font-weight: 550; cursor: pointer; border: 1px solid;
+      white-space: nowrap; font-family: var(--sans);
+      transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+    .btn-primary   { background: var(--accent); border-color: var(--accent-strong); color: #fff; }
+    .btn-primary:hover { background: var(--accent-strong); }
+    .btn-secondary { background: var(--surface); border-color: var(--line); color: var(--text); }
+    .btn-secondary:hover { background: #f6f3ef; border-color: #dcd5cc; }
+    .btn-danger    { background: var(--surface); border-color: #e5b3b6; color: var(--red); }
+    .btn-danger:hover { background: #fff5f5; border-color: var(--red); }
+    .btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 7px; }
+    .btn-xs { padding: 3px 8px;  font-size: 11px; border-radius: 6px; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* Prominent add-action button at the foot of a list */
+    .add-row-btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 16px; border-radius: 9px; cursor: pointer;
+      border: 1px dashed #d8cfc4; background: var(--surface); color: var(--accent);
+      font-family: var(--sans); font-size: 13px; font-weight: 550;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .add-row-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+    /* ── Config action bar (sticky bottom of workspace) ────────────────────── */
+    .config-action-bar {
+      position: sticky; bottom: 0; z-index: 20;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      width: 100%; max-width: 1180px; margin: 0 auto;
+      padding: 14px clamp(24px, 5vw, 72px);
+      background: rgba(251,250,248,0.9);
+      backdrop-filter: saturate(180%) blur(8px);
+      border-top: 1px solid var(--line);
+    }
+    /* Hidden while the Token pane is active (no config to save there) */
+    .app-shell[data-active="token"] .config-action-bar { display: none; }
+    .config-action-bar .status { margin-top: 0; text-align: left; }
+    /* Push the button group to the right; status + unsaved sit on the left */
+    .config-action-bar #save-config-btn { margin-left: auto; }
+    .unsaved-indicator {
+      font-size: 12px; font-weight: 550; color: var(--amber);
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    }
+    .unsaved-indicator::before { content: '●'; font-size: 9px; color: #d4a72c; }
+    .btn--attention { box-shadow: 0 0 0 3px rgba(124,83,224,0.22); }
+
+    /* ── Pane fade-in on switch ────────────────────────────────────────────── */
+    .tab-panel { animation: pane-in 0.22s ease both; }
+    @keyframes pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       Component styles below are consumed by builder output in options.js.
+       Class names are unchanged from the previous design — only themed.
+    ══════════════════════════════════════════════════════════════════════════ */
+
+    textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+      border-radius: 8px; font-size: 12px; font-family: var(--mono);
+      outline: none; resize: vertical; line-height: 1.5; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,83,224,0.13); }
+
+    .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 12px; line-height: 1.6; }
+    .badge-success { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-line); }
 
     /* ── Form sections ── */
-    .form-section { border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+    .form-section { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow-card); }
     .form-section-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 9px 14px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
-      font-size: 13px; font-weight: 600; color: #1f2328;
+      padding: 11px 15px; background: #faf8f5; border-bottom: 1px solid var(--line);
+      font-size: 13px; font-weight: 650; color: var(--text);
     }
-    .form-section-body { padding: 12px 14px; }
+    .form-section-body { padding: 14px 15px; }
 
     /* ── Field rows ── */
     .field-row {
       display: grid; grid-template-columns: 150px 1fr;
-      align-items: center; gap: 8px; margin-bottom: 8px;
+      align-items: center; gap: 8px; margin-bottom: 9px;
     }
     .field-row:last-child { margin-bottom: 0; }
     .field-row--top { align-items: flex-start; }
-    .field-label { font-size: 12px; font-weight: 500; color: #57606a; display: inline-flex; align-items: center; gap: 4px; }
+    .field-label { font-size: 12px; font-weight: 550; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
     .field-hint {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0;
-      background: #d0d7de; color: #57606a; font-size: 9px; font-weight: 700;
+      width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+      background: #e4ddd4; color: var(--muted); font-size: 9px; font-weight: 700;
       cursor: default; line-height: 1; font-style: normal;
     }
-    .field-hint:hover { background: #8c959f; color: white; }
+    .field-hint:hover { background: var(--accent); color: white; }
 
     /* ── Custom tooltip ── */
     #hint-tooltip {
       position: fixed; z-index: 9999; pointer-events: none;
-      max-width: 260px; padding: 7px 10px;
-      background: #1f2328; color: #f0f3f6;
-      font-size: 11px; line-height: 1.5; font-family: inherit;
-      border-radius: 6px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-      opacity: 0; transition: opacity 0.12s ease;
-      white-space: pre-line;
+      max-width: 260px; padding: 8px 11px;
+      background: var(--ink); color: #f0f3f6;
+      font-size: 11.5px; line-height: 1.5; font-family: var(--sans);
+      border-radius: 7px; box-shadow: 0 6px 18px rgba(27,31,36,0.28);
+      opacity: 0; transition: opacity 0.12s ease; white-space: pre-line;
     }
     #hint-tooltip.visible { opacity: 1; }
-    #hint-tooltip::after {
-      content: ''; position: absolute;
-      border: 5px solid transparent;
-    }
-    #hint-tooltip.tip-below::after {
-      top: -10px; left: 50%; transform: translateX(-50%);
-      border-bottom-color: #1f2328;
-    }
-    #hint-tooltip.tip-above::after {
-      bottom: -10px; left: 50%; transform: translateX(-50%);
-      border-top-color: #1f2328;
-    }
+    #hint-tooltip::after { content: ''; position: absolute; border: 5px solid transparent; }
+    #hint-tooltip.tip-below::after { top: -10px; left: 50%; transform: translateX(-50%); border-bottom-color: var(--ink); }
+    #hint-tooltip.tip-above::after { bottom: -10px; left: 50%; transform: translateX(-50%); border-top-color: var(--ink); }
 
     .field-input {
-      padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 6px;
-      font-size: 12px; font-family: inherit; outline: none; width: 100%;
-      transition: border-color 0.15s; background: white;
+      padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px;
+      font-size: 12px; font-family: var(--sans); outline: none; width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s; background: var(--surface);
     }
-    .field-input:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
-    .field-input--mono { font-family: monospace; }
+    .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,83,224,0.13); }
+    .field-input--mono { font-family: var(--mono); }
 
     .field-select {
-      padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 6px;
-      font-size: 12px; outline: none; background: white; cursor: pointer; width: 100%;
+      padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px;
+      font-size: 12px; outline: none; background: var(--surface); cursor: pointer; width: 100%;
     }
-    .field-select:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
+    .field-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,83,224,0.13); }
 
     .field-textarea {
-      padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 6px;
-      font-size: 11px; font-family: monospace; outline: none; width: 100%;
-      resize: vertical; line-height: 1.5; transition: border-color 0.15s; background: white;
+      padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px;
+      font-size: 12px; font-family: var(--sans); outline: none; width: 100%;
+      resize: vertical; line-height: 1.5; min-height: 56px; box-sizing: border-box;
+      transition: border-color 0.15s, box-shadow 0.15s; background: var(--surface);
     }
-    .field-textarea:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
+    .field-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,83,224,0.13); }
 
     /* ── Color input ── */
     .color-group { display: flex; align-items: center; gap: 8px; }
     .color-group input[type="color"] {
-      width: 30px; height: 28px; padding: 2px; border: 1px solid #d0d7de;
-      border-radius: 4px; cursor: pointer; flex-shrink: 0;
+      width: 30px; height: 28px; padding: 2px; border: 1px solid var(--line);
+      border-radius: 5px; cursor: pointer; flex-shrink: 0;
     }
     .color-group .field-input { flex: 1; width: auto; }
 
     /* ── Checkboxes ── */
     .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-top: 3px; }
-    .checkbox-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #1f2328; cursor: pointer; }
+    .checkbox-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text); cursor: pointer; }
+    input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
     /* ── Toggle switch ── */
     .switch { position: relative; display: inline-flex; flex-shrink: 0; width: 30px; height: 18px; cursor: pointer; }
     .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-    .switch .switch-track {
-      position: absolute; inset: 0; border-radius: 999px;
-      background: #d0d7de; transition: background 0.2s ease;
-    }
+    .switch .switch-track { position: absolute; inset: 0; border-radius: 999px; background: #d3ccc2; transition: background 0.2s ease; }
     .switch .switch-thumb {
       position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
       border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25);
       transition: transform 0.2s ease;
     }
-    .switch input:checked ~ .switch-track { background: #2da44e; }
+    .switch input:checked ~ .switch-track { background: var(--accent); }
     .switch input:checked ~ .switch-thumb { transform: translateX(12px); }
-    .switch input:focus-visible ~ .switch-track { box-shadow: 0 0 0 2px rgba(9,105,218,0.4); }
+    .switch input:focus-visible ~ .switch-track { box-shadow: 0 0 0 2px rgba(124,83,224,0.4); }
 
-    /* ── Inline toggle fields (label + switch pairs wrapping in a row) ── */
-    .inline-toggle-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
-    .inline-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: #57606a; cursor: pointer; }
+    /* ── Inline toggle fields ── */
+    .inline-toggle-row { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+    .inline-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 550; color: var(--muted); cursor: pointer; }
 
-    /* ── Segmented control (mutually-exclusive choices backed by radios) ── */
-    .segmented { display: inline-flex; border: 1px solid #d0d7de; border-radius: 7px; overflow: hidden; background: #f6f8fa; }
+    /* ── Segmented control ── */
+    .segmented { display: inline-flex; align-self: flex-start; width: fit-content; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #faf8f5; }
     .segmented label {
       position: relative; display: inline-flex; align-items: center; justify-content: center;
-      padding: 4px 12px; font-size: 12px; font-weight: 500; color: #57606a;
+      padding: 5px 13px; font-size: 12px; font-weight: 550; color: var(--muted);
       cursor: pointer; user-select: none; white-space: nowrap;
-      border-left: 1px solid #d0d7de; transition: background 0.15s, color 0.15s;
+      border-left: 1px solid var(--line); transition: background 0.15s, color 0.15s;
     }
     .segmented label:first-child { border-left: none; }
     .segmented input { position: absolute; opacity: 0; width: 0; height: 0; }
-    .segmented label:hover { background: #eef1f4; color: #1f2328; }
-    .segmented label:has(input:checked) { background: #0969da; color: #fff; }
-    .segmented label:has(input:checked):hover { background: #0860ca; }
-    .segmented label:has(input:focus-visible) { box-shadow: inset 0 0 0 2px rgba(9,105,218,0.4); }
-
+    .segmented label:hover { background: #f1ece5; color: var(--text); }
+    .segmented label:has(input:checked) { background: var(--accent); color: #fff; }
+    .segmented label:has(input:checked):hover { background: var(--accent-strong); }
+    .segmented label:has(input:focus-visible) { box-shadow: inset 0 0 0 2px rgba(124,83,224,0.4); }
 
     /* ── Action sub-forms ── */
     .action-subform { margin-bottom: 10px; }
@@ -282,67 +445,79 @@
     .tag-inline-row .tag-list { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
     .tag-inline-row .tag-row .field-input { width: 150px; flex: none; }
 
-    /* ── Deploy button cards ── */
-    .deploy-card { border: 1px solid #d0d7de; border-radius: 6px; margin: 0 12px 8px; overflow: hidden; }
+    /* ── Action / stack / preset cards ── */
+    .deploy-card { border: 1px solid var(--line); border-radius: 9px; margin: 0 0 8px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow-card); }
     .deploy-card-header {
       display: flex; align-items: center; gap: 8px;
-      padding: 7px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+      padding: 9px 12px; background: #faf8f5; border-bottom: 1px solid var(--line);
+      cursor: pointer;
     }
+    .deploy-card-header:hover { background: #f4f0ea; }
     .deploy-card-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
     .deploy-card-name-wrap { flex: 1; display: flex; align-items: center; min-width: 0; }
     .deploy-card-name {
-      font-size: 12px; font-weight: 600; color: #1f2328;
+      font-size: 12.5px; font-weight: 650; color: var(--text);
       background: transparent; border: 1px solid transparent; outline: none;
       padding: 2px 4px; border-radius: 4px; font-family: inherit;
       field-sizing: content; min-width: 40px; max-width: 100%;
     }
-    .deploy-card-name:hover { border-color: #d0d7de; background: white; }
-    .deploy-card-name:focus { border-color: #0969da; background: white; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
-    .deploy-card-body { padding: 14px 14px 10px; }
+    .deploy-card-name:hover { border-color: var(--line); background: var(--surface); }
+    .deploy-card-name:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(124,83,224,0.15); }
+    .deploy-card-body { padding: 15px 15px 11px; }
     .deploy-card-body .field-row { grid-template-columns: 100px 1fr; margin-bottom: 7px; }
     .deploy-card-body .field-label { font-size: 11px; }
+    .sub-note { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
 
-    .sub-note { font-size: 11px; color: #656d76; margin-top: 3px; }
+    /* ── Collapsible action cards ── */
+    .card-chevron { font-size: 18px; color: var(--muted); flex-shrink: 0; margin-right: 4px; transition: transform 0.15s; }
+    .deploy-card.collapsed > .deploy-card-body { display: none; }
+    .deploy-card.collapsed .card-chevron { transform: rotate(-90deg); }
+
+    /* ── Collapsible form sections ── */
+    .form-section.collapsible .form-section-header { cursor: pointer; }
+    .form-section.collapsible .form-section-header:hover { background: #f4f0ea; }
+    .form-section-chevron { font-size: 18px; color: var(--muted); flex-shrink: 0; transition: transform 0.15s; }
+    .form-section.collapsible.collapsed .form-section-body { display: none; }
+    .form-section.collapsible.collapsed .form-section-chevron { transform: rotate(-90deg); }
 
     /* ── Override cards (Groups / Repos) ── */
-    .override-card { border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+    .override-card { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow-card); }
     .override-card-header {
       display: flex; align-items: center; gap: 8px;
-      padding: 8px 12px; background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+      padding: 10px 12px; background: #faf8f5; border-bottom: 1px solid var(--line);
     }
     .override-card-name-wrap { flex: 1; display: flex; align-items: center; min-width: 0; }
     .override-card-repo-name {
-      font-weight: 600; font-size: 13px;
+      font-weight: 650; font-size: 13px;
       background: transparent; border: 1px solid transparent; outline: none;
       padding: 2px 4px; border-radius: 4px; font-family: inherit;
       field-sizing: content; min-width: 60px; max-width: 100%;
     }
-    .override-card-repo-name:hover { border-color: #d0d7de; background: white; }
-    .override-card-repo-name:focus { border-color: #0969da; background: white; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
-    .override-card-repos { padding: 10px 12px; border-bottom: 1px solid #eaeef2; }
+    .override-card-repo-name:hover { border-color: var(--line); background: var(--surface); }
+    .override-card-repo-name:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(124,83,224,0.15); }
+    .override-card-repos { padding: 11px 12px; border-bottom: 1px solid var(--line-soft); }
 
-    .override-section { border-bottom: 1px solid #eaeef2; }
+    .override-section { border-bottom: 1px solid var(--line-soft); }
     .override-section:last-child { border-bottom: none; }
     .override-section-header {
       display: flex; align-items: center; gap: 8px;
-      padding: 8px 12px; cursor: pointer; user-select: none;
-      font-size: 12px; font-weight: 500; color: #1f2328;
+      padding: 9px 12px; cursor: pointer; user-select: none;
+      font-size: 12px; font-weight: 550; color: var(--text);
     }
-    .override-section-header:hover { background: #f6f8fa; }
-    .override-toggle { flex-shrink: 0; cursor: pointer; accent-color: #0969da; }
-    .inherited-badge { font-size: 11px; color: #8c959f; font-weight: 400; }
-    .override-section-body { padding: 8px 12px 10px; }
-    .override-mode-row { display: flex; gap: 16px; margin-bottom: 8px; padding: 6px 8px; background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; }
-    .mode-discovery-link { background: none; border: none; padding: 0; margin-top: 4px; font-size: 11px; color: #8c959f; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; display: block; }
-    .mode-discovery-link:hover { color: #0969da; }
+    .override-section-header:hover { background: #faf8f5; }
+    .override-toggle { flex-shrink: 0; cursor: pointer; }
+    .inherited-badge { font-size: 11px; color: var(--faint); font-weight: 400; }
+    .override-section-body { padding: 9px 12px 11px; }
+    .override-mode-row { display: flex; gap: 16px; margin-bottom: 8px; padding: 7px 9px; background: #faf8f5; border: 1px solid var(--line-soft); border-radius: 7px; }
+    .mode-discovery-link { background: none; border: none; padding: 0; margin-top: 4px; font-size: 11px; color: var(--faint); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; display: block; }
+    .mode-discovery-link:hover { color: var(--accent); }
     .mode-badge {
-      font-size: 10px; font-weight: 500; font-family: inherit;
-      padding: 1px 7px; border-radius: 10px;
-      background: #eaeef2; color: #57606a;
-      border: 1px solid #d0d7de;
+      font-size: 10px; font-weight: 550; font-family: inherit;
+      padding: 1px 8px; border-radius: 10px;
+      background: #efeae3; color: var(--muted); border: 1px solid var(--line);
       cursor: pointer; user-select: none; white-space: nowrap;
     }
-    .mode-badge:hover { background: #d0d7de; color: #1f2328; }
+    .mode-badge:hover { background: #e4ddd4; color: var(--text); }
     .override-mode-group { display: flex; align-items: center; gap: 5px; }
     .override-header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
     .override-copy-btn { margin-bottom: 8px; }
@@ -350,516 +525,513 @@
     .override-section-body .field-row:last-child { margin-bottom: 0; }
     .override-section-body .action-subform .field-row { grid-template-columns: 100px 1fr; }
     .override-section-body .deploy-card { margin: 0 0 8px; }
+    .override-card-chevron { font-size: 18px; color: var(--muted); cursor: pointer; flex-shrink: 0; transition: transform 0.15s; }
+    .override-card.collapsed > :not(.override-card-header) { display: none; }
+    .override-card.collapsed .override-card-chevron { transform: rotate(-90deg); }
 
     /* ── Validation error highlighting ── */
-    .validation-error { border-color: #cf222e !important; box-shadow: 0 0 0 3px rgba(207,34,46,0.15) !important; }
-    .deploy-card.card-error  { border-color: #cf222e; box-shadow: 0 0 0 2px rgba(207,34,46,0.12); }
-    .override-card.card-error { border-color: #cf222e; box-shadow: 0 0 0 2px rgba(207,34,46,0.12); }
-    .inline-error-msg { font-size: 12px; color: #cf222e; background: #fff5f5; border: 1px solid #ffcdd2; border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; }
-
-    .footer { text-align: center; font-size: 12px; color: #656d76; }
-
-    /* ── Sticky config action bar ── */
-    .config-action-bar {
-      position: sticky; bottom: 0; z-index: 20;
-      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
-      margin: 16px -32px 0; padding: 14px 32px;
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: saturate(180%) blur(6px);
-      border-top: 1px solid #d0d7de;
-    }
-    .config-action-bar .status { margin-top: 0; text-align: right; }
-    .unsaved-indicator {
-      margin-left: auto;
-      font-size: 12px; font-weight: 500; color: #9a6700;
-      display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
-    }
-    .unsaved-indicator[hidden] + .status { margin-left: auto; }
-    .unsaved-indicator::before { content: '●'; font-size: 9px; color: #d4a72c; }
-    .btn--attention {
-      background: #1f883d; border-color: #1a7f37; color: #fff;
-      box-shadow: 0 0 0 3px rgba(31,136,61,0.18);
-    }
-    .btn--attention:hover { background: #1a7f37; }
-    .btn:disabled { opacity: 0.5; cursor: default; }
-
-    /* ── Token cards (per-action token list) ── */
-    .token-list { margin-bottom: 6px; }
-    .token-list .deploy-card { margin: 0 0 6px; }
-
-    /* ── Target override ── */
-    .target-override-section { margin-top: 8px; }
-    .target-override-toggle {
-      display: inline-block; font-size: 11px; color: #0969da;
-      cursor: pointer; user-select: none;
-    }
-    .target-override-toggle:hover { text-decoration: underline; }
-    .target-override-body {
-      margin-top: 6px; padding: 8px 10px;
-      background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 4px;
-    }
-    .target-override-body .field-row { grid-template-columns: 80px 1fr; margin-bottom: 6px; }
-    .target-override-body .field-row:last-child { margin-bottom: 0; }
-    .target-override-body .field-label { font-size: 11px; }
-    .target-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; padding: 10px 12px; background: #f6f8fa; border: 1px solid #eaeef2; border-radius: 6px; }
-    .target-panel .cfield { margin-bottom: 0; }
-    .on-multiple-group { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; padding-top: 2px; }
+    .validation-error { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(207,34,46,0.15) !important; }
+    .deploy-card.card-error  { border-color: var(--red); box-shadow: 0 0 0 2px rgba(207,34,46,0.12); }
+    .override-card.card-error { border-color: var(--red); box-shadow: 0 0 0 2px rgba(207,34,46,0.12); }
+    .inline-error-msg { font-size: 12px; color: var(--red); background: #fff5f5; border: 1px solid #ffcdd2; border-radius: 6px; padding: 7px 11px; margin-bottom: 10px; }
 
     /* ── Top-aligned card field groups ── */
     .cfield { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
     .cfield:last-child { margin-bottom: 0; }
-    .cfield-label { font-size: 12px; font-weight: 600; color: #1f2328; display: inline-flex; align-items: center; gap: 4px; }
-    .cfield-helper { font-size: 11px; color: #8c959f; line-height: 1.5; }
+    .cfield-label { font-size: 12px; font-weight: 650; color: var(--text); display: inline-flex; align-items: center; gap: 4px; }
+    .cfield-helper { font-size: 11px; color: var(--faint); line-height: 1.5; }
     .cfield-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .cfield-pair-sublabel { font-size: 10px; color: #8c959f; display: block; margin-bottom: 3px; }
-    .field-textarea { width: 100%; padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 56px; box-sizing: border-box; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
-    .field-textarea:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.15); }
+    .cfield-pair-sublabel { font-size: 10px; color: var(--faint); display: block; margin-bottom: 3px; }
     .feedback-section-body .cfield { margin-bottom: 12px; }
     .feedback-section-body .cfield:last-child { margin-bottom: 0; }
 
-    /* ── Conditional rules building block ── */
+    /* ── Conditional rules ── */
     .cond-rule-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 5px; }
     .cond-rule-row { display: grid; grid-template-columns: auto 1fr auto 1.5fr auto; gap: 5px; align-items: center; }
-    .cond-arrow { font-size: 11px; color: #8c959f; padding: 0 2px; }
-
-    /* ── Drag and drop ── */
-    .drag-handle {
-      cursor: grab; color: #c0c7cf; padding: 0 2px;
-      font-size: 14px; flex-shrink: 0; user-select: none; line-height: 1;
-    }
-    .drag-handle:hover { color: #57606a; }
-    .drag-handle:active { cursor: grabbing; }
-    .wd-dragging { opacity: 0.35; }
-    .drag-before { box-shadow: 0 -2px 0 0 #0969da; }
-    .drag-after  { box-shadow: 0  2px 0 0 #0969da; }
-    .cond-mode-toggle {
-      background: none; border: none; padding: 0;
-      font-size: 11px; color: #0969da; cursor: pointer;
-      display: inline-block; margin-top: 3px; line-height: 1.4;
-    }
+    .cond-arrow { font-size: 11px; color: var(--faint); padding: 0 2px; }
+    .cond-mode-toggle { background: none; border: none; padding: 0; font-size: 11px; color: var(--accent); cursor: pointer; display: inline-block; margin-top: 3px; line-height: 1.4; }
     .cond-mode-toggle:hover { text-decoration: underline; }
 
-    /* ── Collapsible action cards ── */
-    .deploy-card-header { cursor: pointer; }
-    .deploy-card-header:hover { background: #edf0f3; }
-    .card-chevron { font-size: 18px; color: #57606a; flex-shrink: 0; margin-right: 4px; transition: transform 0.15s; }
-    .deploy-card.collapsed > .deploy-card-body { display: none; }
-    .deploy-card.collapsed .card-chevron { transform: rotate(-90deg); }
-
-    /* ── Collapsible form sections ── */
-    .form-section-header { cursor: default; }
-    .form-section.collapsible .form-section-header { cursor: pointer; }
-    .form-section.collapsible .form-section-header:hover { background: #edf0f3; }
-    .form-section-chevron { font-size: 18px; color: #57606a; flex-shrink: 0; transition: transform 0.15s; }
-    .form-section.collapsible.collapsed .form-section-body { display: none; }
-    .form-section.collapsible.collapsed .form-section-chevron { transform: rotate(-90deg); }
-
-    /* ── Collapsible override cards (groups / repos) ── */
-    .override-card-chevron { font-size: 18px; color: #57606a; cursor: pointer; flex-shrink: 0; transition: transform 0.15s; }
-    .override-card.collapsed > :not(.override-card-header) { display: none; }
-    .override-card.collapsed .override-card-chevron { transform: rotate(-90deg); }
+    /* ── Drag and drop ── */
+    .drag-handle { cursor: grab; color: #cdc6bc; padding: 0 2px; font-size: 14px; flex-shrink: 0; user-select: none; line-height: 1; }
+    .drag-handle:hover { color: var(--muted); }
+    .drag-handle:active { cursor: grabbing; }
+    .wd-dragging { opacity: 0.35; }
+    .drag-before { box-shadow: 0 -2px 0 0 var(--accent); }
+    .drag-after  { box-shadow: 0  2px 0 0 var(--accent); }
 
     /* ── JSON modal ── */
-    .json-modal-overlay {
-      position: fixed; inset: 0; z-index: 9999;
-      background: rgba(0,0,0,0.45);
-      display: flex; align-items: center; justify-content: center;
-    }
+    .json-modal-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(27,31,36,0.5); display: flex; align-items: center; justify-content: center; }
     .json-modal {
-      background: white; border-radius: 10px; padding: 24px;
+      background: var(--surface); border-radius: 12px; padding: 24px;
       width: 90%; max-width: 740px; max-height: 90vh;
       display: flex; flex-direction: column; gap: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      box-shadow: 0 12px 40px rgba(27,31,36,0.25);
     }
     .json-modal-header { display: flex; align-items: center; justify-content: space-between; }
-    .json-modal-header h3 { font-size: 16px; font-weight: 600; margin: 0; }
+    .json-modal-header h3 { font-size: 16px; font-weight: 700; margin: 0; }
     .json-modal textarea {
-      flex: 1; min-height: 380px; font-family: monospace; font-size: 12px;
-      line-height: 1.5; padding: 10px; border: 1px solid #d0d7de;
-      border-radius: 6px; resize: vertical; outline: none;
+      flex: 1; min-height: 380px; font-family: var(--mono); font-size: 12px;
+      line-height: 1.5; padding: 12px; border: 1px solid var(--line);
+      border-radius: 8px; resize: vertical; outline: none;
     }
-    .json-modal textarea:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
+    .json-modal textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,83,224,0.13); }
     .json-modal-actions { display: flex; align-items: center; gap: 8px; }
-    .feedback-sep-line { border-top: 1px solid #eaeef2; margin: 8px -12px 8px; }
-    .feedback-pair { display: grid; grid-template-columns: 1fr auto 1.1fr; gap: 5px; align-items: center; }
-    .feedback-sep  { font-size: 11px; color: #8c959f; white-space: nowrap; }
 
-    /* ── Card name edit button ── */
+    /* ── Feedback pair / separators ── */
+    .feedback-sep-line { border-top: 1px solid var(--line-soft); margin: 8px -12px 8px; }
+    .feedback-pair { display: grid; grid-template-columns: 1fr auto 1.1fr; gap: 5px; align-items: center; }
+    .feedback-sep  { font-size: 11px; color: var(--faint); white-space: nowrap; }
+
+    /* ── Card name / color edit ── */
     .card-edit-btn {
       display: inline-flex; align-items: center; justify-content: center;
-      color: #8c959f; cursor: pointer;
-      padding: 3px; border-radius: 4px; flex-shrink: 0;
-      user-select: none; margin-left: 3px;
+      color: var(--faint); cursor: pointer; padding: 3px; border-radius: 4px;
+      flex-shrink: 0; user-select: none; margin-left: 3px;
       transition: color 0.15s, background 0.15s;
     }
-    .card-edit-btn:hover { color: #0969da; background: rgba(9,105,218,0.08); }
-
-    /* ── Card name edit popup ── */
+    .card-edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
     .card-edit-popup {
-      position: fixed; z-index: 10000;
-      background: #fff; border: 1px solid #d0d7de;
-      border-radius: 8px; box-shadow: 0 8px 24px rgba(140,149,159,0.25);
-      padding: 12px 14px; min-width: 220px;
+      position: fixed; z-index: 10000; background: var(--surface);
+      border: 1px solid var(--line); border-radius: 10px;
+      box-shadow: 0 12px 30px rgba(27,31,36,0.2); padding: 12px 14px; min-width: 220px;
     }
     .card-edit-popup-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .card-edit-popup-row:last-child { margin-bottom: 0; }
-    .card-edit-popup-label {
-      font-size: 10px; font-weight: 600; color: #8c959f;
-      text-transform: uppercase; letter-spacing: 0.05em;
-    }
-    .card-edit-popup-input {
-      padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 5px;
-      font-size: 13px; font-family: inherit; outline: none; width: 100%;
-    }
-    .card-edit-popup-input:focus { border-color: #0969da; box-shadow: 0 0 0 3px rgba(9,105,218,0.12); }
-    .card-edit-popup-color {
-      width: 40px; height: 30px; border: 1px solid #d0d7de;
-      border-radius: 5px; cursor: pointer; padding: 2px; background: none;
-    }
+    .card-edit-popup-label { font-size: 10px; font-weight: 650; color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; }
+    .card-edit-popup-input { padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; font-family: inherit; outline: none; width: 100%; }
+    .card-edit-popup-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,83,224,0.13); }
+    .card-edit-popup-color { width: 40px; height: 30px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; padding: 2px; background: none; }
 
-    /* ── Stack chips (per-action assignment) ── */
+    /* ── Stack chips ── */
     .stack-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
     .stack-chip {
       display: inline-flex; align-items: center; gap: 4px;
       padding: 2px 6px 2px 8px; border-radius: 10px;
-      background: #f6f8fa; border: 1px solid #d0d7de;
-      font-size: 11px; font-weight: 500; color: #1f2328;
+      background: #faf8f5; border: 1px solid var(--line);
+      font-size: 11px; font-weight: 550; color: var(--text);
     }
     .stack-chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-right: 1px; }
-    .stack-chip-rm {
-      display: inline-flex; align-items: center; justify-content: center;
-      background: none; border: none; cursor: pointer;
-      color: #8c959f; font-size: 14px; line-height: 1; padding: 0; margin-left: 1px;
-    }
-    .stack-chip-rm:hover { color: #cf222e; }
-
-    /* ── Stack assignment popup menu ── */
+    .stack-chip-rm { display: inline-flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: var(--faint); font-size: 14px; line-height: 1; padding: 0; margin-left: 1px; }
+    .stack-chip-rm:hover { color: var(--red); }
     .stack-assign-menu {
-      position: fixed; z-index: 10001;
-      background: #fff; border: 1px solid #d0d7de;
-      border-radius: 8px; padding: 4px;
-      min-width: 160px; max-width: 240px;
-      box-shadow: 0 8px 24px rgba(140,149,159,0.25);
-      font-family: inherit;
+      position: fixed; z-index: 10001; background: var(--surface);
+      border: 1px solid var(--line); border-radius: 10px; padding: 4px;
+      min-width: 160px; max-width: 240px; box-shadow: 0 12px 30px rgba(27,31,36,0.2); font-family: inherit;
     }
     .stack-assign-item {
-      display: flex; align-items: center; gap: 8px;
-      width: 100%; padding: 6px 10px; border: none;
-      background: none; border-radius: 5px; cursor: pointer;
-      font-size: 12px; font-weight: 500; color: #1f2328;
-      text-align: left; white-space: nowrap;
+      display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: none;
+      background: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 550;
+      color: var(--text); text-align: left; white-space: nowrap;
     }
-    .stack-assign-item:hover { background: #f6f8fa; }
-    .stack-assign-item--create { color: #0969da; justify-content: center; border-top: 1px solid #eaeef2; margin-top: 2px; padding-top: 8px; }
-    .stack-assign-empty { padding: 8px 10px; font-size: 12px; color: #8c959f; text-align: center; }
+    .stack-assign-item:hover { background: #faf8f5; }
+    .stack-assign-item--create { color: var(--accent); justify-content: center; border-top: 1px solid var(--line-soft); margin-top: 2px; padding-top: 8px; }
+    .stack-assign-empty { padding: 8px 10px; font-size: 12px; color: var(--faint); text-align: center; }
     .stack-assign-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-    @keyframes wd-highlight-flash {
-      0%   { box-shadow: 0 0 0 3px rgba(9,105,218,0.35), inset 0 0 0 9999px rgba(9,105,218,0.08); }
-      100% { box-shadow: none; }
-    }
-    .wd-highlight { animation: wd-highlight-flash 1.4s ease-out forwards; }
+    /* ── Target override ── */
+    .target-override-section { margin-top: 8px; }
+    .target-override-toggle { display: inline-block; font-size: 11px; color: var(--accent); cursor: pointer; user-select: none; }
+    .target-override-toggle:hover { text-decoration: underline; }
+    .target-override-body { margin-top: 6px; padding: 9px 11px; background: #faf8f5; border: 1px solid var(--line-soft); border-radius: 7px; }
+    .target-override-body .field-row { grid-template-columns: 80px 1fr; margin-bottom: 6px; }
+    .target-override-body .field-row:last-child { margin-bottom: 0; }
+    .target-override-body .field-label { font-size: 11px; }
+    .target-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; padding: 11px 12px; background: #faf8f5; border: 1px solid var(--line-soft); border-radius: 7px; }
+    .target-panel .cfield { margin-bottom: 0; }
+    .on-multiple-group { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; padding-top: 2px; }
 
     /* ── Collapsible feedback section inside action cards ── */
-    .feedback-section { border-top: 1px solid #eaeef2; margin-top: 6px; }
+    .feedback-section { border-top: 1px solid var(--line-soft); margin-top: 6px; }
     .feedback-section-header {
       display: flex; align-items: center; gap: 5px;
-      padding: 6px 0; font-size: 12px; font-weight: 500; color: #57606a;
+      padding: 8px 0; font-size: 12px; font-weight: 550; color: var(--muted);
       cursor: pointer; user-select: none;
     }
-    .feedback-section-header:hover { color: #1f2328; }
+    .feedback-section-header:hover { color: var(--text); }
     .feedback-chevron { font-size: 18px; transition: transform 0.15s; line-height: 1; }
     .feedback-section.collapsed .feedback-section-header .feedback-chevron { transform: rotate(-90deg); }
     .feedback-section.collapsed .feedback-section-body { display: none; }
     .feedback-section-body { padding-top: 8px; }
+
+    @keyframes wd-highlight-flash {
+      0%   { box-shadow: 0 0 0 3px rgba(124,83,224,0.35), inset 0 0 0 9999px rgba(124,83,224,0.08); }
+      100% { box-shadow: none; }
+    }
+    .wd-highlight { animation: wd-highlight-flash 1.4s ease-out forwards; }
+
+    /* ── Responsive: collapse rail to a top strip ───────────────────────────── */
+    @media (max-width: 820px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .rail {
+        position: sticky; top: 0; height: auto; z-index: 30;
+        flex-direction: row; align-items: center; gap: 6px;
+        padding: 10px 12px; overflow-x: auto; overflow-y: hidden;
+        border-right: none; border-bottom: 1px solid var(--ink-line);
+      }
+      .brand { padding: 0 12px 0 4px; flex-shrink: 0; }
+      .brand-tag { display: none; }
+      .nav-group { display: flex; align-items: center; margin: 0; }
+      .nav-group + .nav-group { margin-top: 0; }
+      .nav-label { display: none; }
+      .rail .tab-btn { width: auto; white-space: nowrap; padding: 7px 12px; }
+      .rail .tab-btn::before { display: none; }
+      .rail-spacer, .rail-divider, .rail-foot { display: none; }
+      .rail-btn { width: auto; flex-shrink: 0; }
+      .workspace-scroll { padding: 28px 20px; }
+      .config-action-bar { padding: 12px 20px; }
+      .prec-rule { margin-left: 0; width: 100%; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
   </style>
 </head>
 <body>
   <div id="hint-tooltip"></div>
-  <div class="card">
 
-    <!-- ── Open reason banner ── -->
-    <div id="open-reason-banner" class="open-reason-banner" hidden>
-      <span class="open-reason-banner-icon">⚠️</span>
-      <span id="open-reason-text"></span>
-    </div>
+  <div class="app-shell" data-active="token">
 
-    <!-- ── Header ── -->
-    <div class="card-header">
-      <h1>LazyGitHub</h1>
-      <p class="subtitle">Build one-click PR actions across your repos. Set global defaults, then override by group or repo. Changes take effect after reloading your GitHub tab.</p>
-    </div>
-
-    <!-- ── Token ── -->
-    <div class="feedback-section" id="token-section">
-      <div class="feedback-section-header">
-        <span class="feedback-chevron">▾</span>
-        GitHub Personal Access Token
-        <span id="token-badge" class="badge badge-success" hidden style="margin-left:4px;">✓ Connected</span>
-      </div>
-      <div class="feedback-section-body" style="padding-top: 10px;">
-        <p class="hint">
-          Generate a token at
-          <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens</a>
-          with the scopes listed below.
-        </p>
-        <div class="scopes">
-          <h2>Required token scopes</h2>
-          <ul>
-            <li><code>repo</code> — read PR details, post comments, create deployments, and trigger repository dispatch events</li>
-            <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
-          </ul>
-          <p style="font-size:11px;color:#656d76;margin-top:8px;line-height:1.5;">
-            <strong>Note:</strong> If your organisation enforces SAML SSO, you must also
-            <a href="https://docs.github.com/en/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on" target="_blank">authorise this token for SSO</a>
-            after creating it, otherwise API calls to that org will be rejected.
-          </p>
+    <!-- ══ Command rail ══ -->
+    <aside class="rail">
+      <div class="brand">
+        <img class="brand-mark" src="icon128.png" alt="LazyGitHub" width="34" height="34" />
+        <div>
+          <div class="brand-name">LazyGitHub</div>
+          <div class="brand-tag">shortcuts &amp; automations</div>
         </div>
-        <div style="margin-top: 12px;"></div>
-        <div id="token-configured-box" class="token-configured-box" hidden>
-          <div class="token-info">
-            <div class="token-check">✓</div>
-            <div class="token-info-text">
-              <div class="token-label">Token active</div>
-              <div class="token-mask" id="token-mask">••••••••••••xxxx</div>
-            </div>
-          </div>
-          <div class="token-actions">
-            <button class="btn btn-secondary" id="update-btn">Update</button>
-            <button class="btn btn-danger"    id="clear-btn">Remove</button>
-          </div>
-        </div>
-        <div id="token-input-section" class="input-row" hidden>
-          <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
-          <button class="btn btn-primary"   id="save-btn">Save</button>
-          <button class="btn btn-secondary" id="cancel-btn" hidden>Cancel</button>
-        </div>
-        <p class="status" id="status-msg"></p>
-      </div>
-    </div>
-
-    <hr class="divider" />
-
-    <!-- ── Config ── -->
-    <div class="section" id="config-section">
-      <div class="section-title">
-        <label>Extension Configuration</label>
-      </div>
-      <p class="hint">
-        Click any section header to expand it.
-        Use <strong>{ } JSON</strong> to export your config or share it with a teammate.
-        <strong>Save Config</strong> applies all tabs at once — then reload your GitHub tab for changes to take effect.
-      </p>
-
-      <!-- Tab nav -->
-      <div class="config-tabs">
-        <button class="tab-btn tab-btn--active" data-tab="global">Global</button>
-        <button class="tab-btn" data-tab="groups">Groups <span class="tab-count" id="groups-count"></span></button>
-        <button class="tab-btn" data-tab="repos">Repos <span class="tab-count" id="repos-count"></span></button>
       </div>
 
-      <!-- ── Global tab ── -->
-      <div class="tab-panel" id="tab-global">
+      <div class="nav-group">
+        <div class="nav-label">Setup</div>
+        <button class="tab-btn" data-tab="token">
+          <span class="nav-ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a5 5 0 0 0-1 9.9V13H5.5a.5.5 0 0 0 0 1H7v1.5a.5.5 0 0 0 1 0V14h1.5a.5.5 0 0 0 0-1H8V9.9A5 5 0 0 0 8 0Zm2 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z"/></svg></span>
+          <span class="nav-text">Token</span>
+          <span class="nav-status"></span>
+        </button>
+      </div>
 
-        <!-- PR Actions -->
-        <div class="form-section">
-          <div class="form-section-header">
-            Actions on PR
-            <button class="btn btn-secondary btn-sm" id="add-pr-action-btn">+ Add Action</button>
-          </div>
-          <div id="pr-actions-list" style="padding: 8px 0 4px;"></div>
-          <p class="sub-note" style="padding: 0 14px 10px;">Buttons in the PR header that post comments, dispatch workflows, create deployments, or fire repository events. Use <code>{branchName}</code>, <code>{prTitle}</code>, <code>{prNumber}</code>, <code>{repo}</code>, or any extracted variable as placeholders. Add <code>{input:"Label"}</code> to prompt for user input at click time. Drag <code>⠿</code> to reorder.</p>
+      <div class="nav-group">
+        <div class="nav-label">Global</div>
+        <button class="tab-btn" data-tab="pr-actions">
+          <span class="nav-ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/></svg></span>
+          <span class="nav-text">PR Actions</span>
+        </button>
+        <button class="tab-btn" data-tab="comment-actions">
+          <span class="nav-ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.75.75 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg></span>
+          <span class="nav-text">Comment Actions</span>
+        </button>
+        <button class="tab-btn" data-tab="advanced">
+          <span class="nav-ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.103-.303c.644-.176 1.392.021 1.82.63.27.385.506.792.704 1.218.315.675.111 1.422-.364 1.891l-.814.806c-.049.048-.098.147-.088.294.016.257.016.515 0 .772-.01.147.038.246.088.294l.814.806c.475.469.679 1.216.364 1.891a7.977 7.977 0 0 1-.704 1.217c-.428.61-1.176.807-1.82.63l-1.102-.302c-.067-.019-.177-.011-.3.071a5.909 5.909 0 0 1-.668.386c-.133.066-.194.158-.211.224l-.29 1.106c-.168.646-.715 1.196-1.458 1.26a8.006 8.006 0 0 1-1.402 0c-.743-.064-1.289-.614-1.458-1.26l-.289-1.106c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.103.303c-.644.176-1.392-.021-1.82-.63a8.12 8.12 0 0 1-.704-1.218c-.315-.675-.111-1.422.363-1.891l.815-.806c.05-.048.098-.147.088-.294a6.214 6.214 0 0 1 0-.772c.01-.147-.038-.246-.088-.294l-.815-.806C.635 6.045.431 5.298.746 4.623a7.92 7.92 0 0 1 .704-1.217c.428-.61 1.176-.807 1.82-.63l1.102.302c.067.019.177.011.3-.071.214-.143.437-.272.668-.386.133-.066.194-.158.211-.224l.29-1.106C6.009.645 6.556.095 7.299.03 7.53.01 7.764 0 8 0Zm-.571 1.525c-.036.003-.108.036-.137.146l-.289 1.105c-.147.561-.549.967-.998 1.189-.173.086-.34.183-.5.29-.417.278-.97.423-1.529.27l-1.103-.303c-.109-.03-.175.016-.195.045-.22.312-.412.644-.573.99-.014.031-.021.11.059.19l.815.806c.411.406.562.957.53 1.456a4.709 4.709 0 0 0 0 .582c.032.499-.119 1.05-.53 1.456l-.815.806c-.081.08-.073.159-.059.19.161.346.353.678.573.99.02.029.086.075.195.045l1.103-.303c.559-.153 1.112-.008 1.529.27.16.107.327.204.5.29.449.222.851.628.998 1.189l.289 1.105c.029.11.101.143.137.146a6.6 6.6 0 0 0 1.142 0c.036-.003.108-.036.137-.146l.289-1.105c.147-.561.549-.967.998-1.189.173-.086.34-.183.5-.29.417-.278.97-.423 1.529-.27l1.103.303c.109.03.175-.016.195-.045.22-.312.412-.644.573-.99.014-.031.021-.11-.059-.19l-.815-.806c-.411-.406-.562-.957-.53-1.456a4.709 4.709 0 0 0 0-.582c-.032-.499.119-1.05.53-1.456l.815-.806c.081-.08.073-.159.059-.19a6.464 6.464 0 0 0-.573-.99c-.02-.029-.086-.075-.195-.045l-1.103.303c-.559.153-1.112.008-1.529-.27a4.44 4.44 0 0 0-.5-.29c-.449-.222-.851-.628-.998-1.189l-.289-1.105c-.029-.11-.101-.143-.137-.146a6.6 6.6 0 0 0-1.142 0ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9.5 8a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Z"/></svg></span>
+          <span class="nav-text">Advanced</span>
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Overrides</div>
+        <button class="tab-btn" data-tab="groups">
+          <span class="nav-ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A2.75 2.75 0 0 1 4.75 0h6.5A2.75 2.75 0 0 1 14 2.75v10.5A2.75 2.75 0 0 1 11.25 16h-6.5A2.75 2.75 0 0 1 2 13.25Zm2.75-1.25a1.25 1.25 0 0 0-1.25 1.25v10.5c0 .69.56 1.25 1.25 1.25h6.5c.69 0 1.25-.56 1.25-1.25V2.75c0-.69-.56-1.25-1.25-1.25ZM5 4.25A.75.75 0 0 1 5.75 3.5h4.5a.75.75 0 0 1 0 1.5h-4.5A.75.75 0 0 1 5 4.25Zm0 3A.75.75 0 0 1 5.75 6.5h4.5a.75.75 0 0 1 0 1.5h-4.5A.75.75 0 0 1 5 7.25Z"/></svg></span>
+          <span class="nav-text">Groups</span>
+          <span class="nav-count" id="groups-count"></span>
+        </button>
+        <button class="tab-btn" data-tab="repos">
+          <span class="nav-ico"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"/></svg></span>
+          <span class="nav-text">Repos</span>
+          <span class="nav-count" id="repos-count"></span>
+        </button>
+      </div>
+
+      <div class="rail-spacer"></div>
+      <div class="rail-divider"></div>
+      <button class="rail-btn" id="json-config-btn">{ } &nbsp;Import / export JSON</button>
+      <div class="rail-foot">
+        Made with ❤️ by <a href="https://panshul.dev/studio" target="_blank">Mostly Works Studio</a><br>
+        <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank">⭐ Leave a review</a>
+        &nbsp;·&nbsp;
+        <a href="https://github.com/Mostly-Works-Studio/LazyGithub" target="_blank">Contribute →</a>
+      </div>
+    </aside>
+
+    <!-- ══ Workspace ══ -->
+    <main class="workspace">
+      <div class="workspace-scroll">
+
+        <!-- Open-reason banner -->
+        <div id="open-reason-banner" class="open-reason-banner" hidden>
+          <span class="open-reason-banner-icon">⚠️</span>
+          <span id="open-reason-text"></span>
         </div>
 
-        <!-- Comment Actions -->
-        <div class="form-section">
-          <div class="form-section-header">
-            Actions on PR Comment
-            <button class="btn btn-secondary btn-sm" id="add-comment-action-btn">+ Add Action</button>
-          </div>
-          <div id="comment-actions-list" style="padding: 8px 0 4px;"></div>
-          <p class="sub-note" style="padding: 0 14px 10px;">Buttons that appear next to matching text in PR comments (hover to reveal, auto-hide after 5 s). Extract values like version numbers or hashes from the comment and use them as placeholders in action fields. Add <code>{input:"Label"}</code> to prompt for user input at click time. Drag <code>⠿</code> to reorder.</p>
-        </div>
-
-        <!-- Additional Settings -->
-        <div class="feedback-section collapsed" id="additional-settings-section">
-          <div class="feedback-section-header">
-            <span class="feedback-chevron">▾</span>
-            Additional Settings
-          </div>
-          <div class="feedback-section-body">
-
-            <!-- Stacks -->
-            <div class="form-section" id="stacks-section">
-              <div class="form-section-header">
-                Stacks
-                <button class="btn btn-secondary btn-sm" id="add-stack-btn">+ Add Stack</button>
-              </div>
-              <div id="stacks-list" style="padding: 8px 0 4px;"></div>
-              <p class="sub-note" style="padding: 0 14px 10px;">Group related actions under a shared dropdown to reduce clutter — e.g. group "Build", "Test", "Deploy" under a "Release" button. Assign stacks to individual actions from inside each action card. One action can belong to multiple stacks.</p>
+        <!-- ── Token pane (outside #config-section so token edits don't dirty config) ── -->
+        <section class="tab-panel" id="tab-token" hidden>
+          <div id="token-section">
+            <div class="pane-head">
+              <div class="eyebrow">Setup</div>
+              <h1>GitHub token
+                <span id="token-badge" class="badge badge-success" hidden style="font-size:12px;vertical-align:middle;margin-left:6px;">✓ Connected</span>
+              </h1>
+              <p>LazyGitHub uses a personal access token to talk to the GitHub API on your behalf — reading PR details, posting comments, and dispatching workflows. It's stored only in your browser's synced extension storage.</p>
             </div>
 
-            <!-- Repo Filter -->
-            <div class="form-section collapsible collapsed" id="repo-filter-section">
-              <div class="form-section-header">
-                <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="form-section-chevron">▾</span>
-                  Repo Filter
-                </div>
-              </div>
-              <div class="form-section-body">
-                <div class="field-row">
-                  <span class="field-label">Mode</span>
-                  <div class="segmented" style="width:fit-content;">
-                    <label><input type="radio" name="repo-filter-mode" value="exclude" checked><span>Exclude matching</span></label>
-                    <label><input type="radio" name="repo-filter-mode" value="include"><span>Include only matching</span></label>
+            <div class="panel-card scopes">
+              <h2>Required token scopes</h2>
+              <ul>
+                <li><code>repo</code> — read PR details, post comments, create deployments, and trigger repository dispatch events</li>
+                <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
+              </ul>
+              <p class="note">
+                Generate one at
+                <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens</a>.
+                If your organisation enforces SAML SSO, also
+                <a href="https://docs.github.com/en/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on" target="_blank">authorise the token for SSO</a>,
+                otherwise calls to that org are rejected.
+              </p>
+            </div>
+
+            <div class="panel-card">
+              <div id="token-configured-box" class="token-configured-box" hidden>
+                <div class="token-info">
+                  <div class="token-check">✓</div>
+                  <div class="token-info-text">
+                    <div class="token-label">Token active</div>
+                    <div class="token-mask" id="token-mask">••••••••••••xxxx</div>
                   </div>
                 </div>
-                <div class="field-row field-row--top" style="margin-top:6px;">
-                  <span class="field-label">Patterns</span>
-                  <div>
-                    <div class="tag-inline-row">
-                      <div class="tag-list" id="repo-filter-list"></div>
-                      <button class="btn btn-secondary btn-xs" id="repo-filter-add">+ Add</button>
+                <div class="token-actions">
+                  <button class="btn btn-secondary" id="update-btn">Update</button>
+                  <button class="btn btn-danger"    id="clear-btn">Remove</button>
+                </div>
+              </div>
+              <div id="token-input-section" class="input-row" hidden>
+                <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+                <button class="btn btn-primary"   id="save-btn">Save token</button>
+                <button class="btn btn-secondary" id="cancel-btn" hidden>Cancel</button>
+              </div>
+              <p class="status" id="status-msg"></p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Config panes (wrapped so dirty-tracking + save applies) ── -->
+        <div id="config-section">
+
+          <!-- PR Actions -->
+          <section class="tab-panel" id="tab-pr-actions" hidden>
+            <div class="pane-head">
+              <div class="eyebrow">Global · PR header</div>
+              <h1>PR Actions</h1>
+              <p>Buttons injected into the PR header. Each can post a comment, dispatch a workflow, create a deployment, or fire a repository event.</p>
+            </div>
+            <div id="pr-actions-list"></div>
+            <button class="add-row-btn" id="add-pr-action-btn">+ Add action</button>
+            <p class="pane-note">
+              Use <code>{branchName}</code>, <code>{prTitle}</code>, <code>{prNumber}</code>, <code>{repo}</code>, or any extracted variable as placeholders.
+              Add <code>{input:"Label"}</code> to prompt for a value at click time. Drag <code>⠿</code> to reorder.
+            </p>
+          </section>
+
+          <!-- Comment Actions -->
+          <section class="tab-panel" id="tab-comment-actions" hidden>
+            <div class="pane-head">
+              <div class="eyebrow">Global · PR comments</div>
+              <h1>Comment Actions</h1>
+              <p>Buttons that appear next to matching text inside PR comments (hover to reveal, auto-hide after 5&nbsp;s). Extract values like version numbers or commit hashes from a comment and reuse them as placeholders.</p>
+            </div>
+            <div id="comment-actions-list"></div>
+            <button class="add-row-btn" id="add-comment-action-btn">+ Add action</button>
+            <p class="pane-note">
+              Add <code>{input:"Label"}</code> to prompt for a value at click time. Drag <code>⠿</code> to reorder.
+            </p>
+          </section>
+
+          <!-- Advanced (flattened — was the triple-nested "Additional Settings") -->
+          <section class="tab-panel" id="tab-advanced" hidden>
+            <div class="pane-head">
+              <div class="eyebrow">Global · fine-tuning</div>
+              <h1>Advanced</h1>
+              <p>Optional settings that shape how buttons are grouped, which repos LazyGitHub runs on, and what the on-page info box shows.</p>
+            </div>
+
+            <div id="additional-settings-section">
+
+              <!-- Stacks -->
+              <div class="form-section" id="stacks-section">
+                <div class="form-section-header">
+                  Stacks
+                  <button class="btn btn-secondary btn-sm" id="add-stack-btn">+ Add stack</button>
+                </div>
+                <div id="stacks-list" style="padding: 10px 12px 4px;"></div>
+                <p class="sub-note" style="padding: 0 15px 12px;">Group related actions under a shared dropdown to reduce clutter — e.g. put "Build", "Test", "Deploy" under one "Release" button. Assign stacks from inside each action card. One action can belong to multiple stacks.</p>
+              </div>
+
+              <!-- Repo Filter -->
+              <div class="form-section collapsible collapsed" id="repo-filter-section">
+                <div class="form-section-header">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="form-section-chevron">▾</span>
+                    Repo filter
+                  </div>
+                </div>
+                <div class="form-section-body">
+                  <div class="field-row">
+                    <span class="field-label">Mode</span>
+                    <div class="segmented" style="width:fit-content;">
+                      <label><input type="radio" name="repo-filter-mode" value="exclude" checked><span>Exclude matching</span></label>
+                      <label><input type="radio" name="repo-filter-mode" value="include"><span>Include only matching</span></label>
                     </div>
-                    <p class="sub-note">Exact name or regex (e.g. <code>myorg/helm-.*</code>). Repos listed explicitly in the Repos tab are never excluded by this filter.</p>
+                  </div>
+                  <div class="field-row field-row--top" style="margin-top:6px;">
+                    <span class="field-label">Patterns</span>
+                    <div>
+                      <div class="tag-inline-row">
+                        <div class="tag-list" id="repo-filter-list"></div>
+                        <button class="btn btn-secondary btn-xs" id="repo-filter-add">+ Add</button>
+                      </div>
+                      <p class="sub-note">Exact name or regex (e.g. <code>myorg/helm-.*</code>). Repos listed explicitly in the Repos pane are never excluded by this filter.</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Dropdown Thresholds -->
-            <div class="form-section" style="margin-top: 6px;" id="dropdown-thresholds-section">
-              <div class="form-section-header">
-                Dropdown Thresholds
-              </div>
-              <div class="form-section-body">
-                <div class="field-row">
-                  <span class="field-label">PR header <i class="field-hint" data-hint="Collapse PR header buttons into a dropdown when there are more than N actions. Set to 1 to always show a dropdown. The label field sets the dropdown button text (leave blank for the default).">i</i></span>
-                  <div style="display:flex; gap:8px; align-items:center;">
-                    <input type="number" id="pr-dropdown-threshold" class="field-input" min="1" max="99" style="width:70px;" value="3" placeholder="3">
-                    <input type="text" id="pr-dropdown-label" class="field-input" placeholder="LazyGitHub ▾">
+              <!-- Dropdown Thresholds -->
+              <div class="form-section" style="margin-top: 12px;" id="dropdown-thresholds-section">
+                <div class="form-section-header">Dropdown thresholds</div>
+                <div class="form-section-body">
+                  <div class="field-row">
+                    <span class="field-label">PR header <i class="field-hint" data-hint="Collapse PR header buttons into a dropdown when there are more than N actions. Set to 1 to always show a dropdown. The label field sets the dropdown button text (leave blank for the default).">i</i></span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                      <input type="number" id="pr-dropdown-threshold" class="field-input" min="1" max="99" style="width:70px;" value="3" placeholder="3">
+                      <input type="text" id="pr-dropdown-label" class="field-input" placeholder="LazyGitHub ▾">
+                    </div>
+                  </div>
+                  <div class="field-row" style="margin-top:4px;">
+                    <span class="field-label">Comment buttons <i class="field-hint" data-hint="Collapse comment action buttons into a dropdown when there are more than N actions. Set to 1 to always show a dropdown. The label field sets the dropdown button text (leave blank for the default).">i</i></span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                      <input type="number" id="comment-dropdown-threshold" class="field-input" min="1" max="99" style="width:70px;" value="4" placeholder="4">
+                      <input type="text" id="comment-dropdown-label" class="field-input" placeholder="Actions ▾">
+                    </div>
                   </div>
                 </div>
-                <div class="field-row" style="margin-top:4px;">
-                  <span class="field-label">Comment buttons <i class="field-hint" data-hint="Collapse comment action buttons into a dropdown when there are more than N actions. Set to 1 to always show a dropdown. The label field sets the dropdown button text (leave blank for the default).">i</i></span>
-                  <div style="display:flex; gap:8px; align-items:center;">
-                    <input type="number" id="comment-dropdown-threshold" class="field-input" min="1" max="99" style="width:70px;" value="4" placeholder="4">
-                    <input type="text" id="comment-dropdown-label" class="field-input" placeholder="Actions ▾">
+              </div>
+
+              <!-- PR Info Box -->
+              <div class="form-section collapsible collapsed" style="margin-top: 12px;" id="pr-info-box-section">
+                <div class="form-section-header">
+                  <div style="display:flex; align-items:center; gap:6px; flex:1;">
+                    <span class="form-section-chevron">▾</span>
+                    PR info box
+                  </div>
+                  <label class="switch" title="Enable PR Info Box" onclick="event.stopPropagation()">
+                    <input type="checkbox" id="show-pr-info-box" checked>
+                    <span class="switch-track"></span>
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
+                <div class="form-section-body">
+                  <div class="inline-toggle-row">
+                    <label class="inline-toggle">
+                      Repo <i class="field-hint" data-hint="Show the repository name (owner/repo) in the info box.">i</i>
+                      <span class="switch"><input type="checkbox" id="pr-info-box-show-repo" checked><span class="switch-track"></span><span class="switch-thumb"></span></span>
+                    </label>
+                    <label class="inline-toggle">
+                      Author <i class="field-hint" data-hint="Show the PR author's username in the info box.">i</i>
+                      <span class="switch"><input type="checkbox" id="pr-info-box-show-author" checked><span class="switch-track"></span><span class="switch-thumb"></span></span>
+                    </label>
+                    <label class="inline-toggle">
+                      Head branch <i class="field-hint" data-hint="Show the source (head) branch name in the info box.">i</i>
+                      <span class="switch"><input type="checkbox" id="pr-info-box-show-head" checked><span class="switch-track"></span><span class="switch-thumb"></span></span>
+                    </label>
+                    <label class="inline-toggle">
+                      Base branch <i class="field-hint" data-hint="Show the target (base) branch name with a refresh button in the info box.">i</i>
+                      <span class="switch"><input type="checkbox" id="pr-info-box-show-base" checked><span class="switch-track"></span><span class="switch-thumb"></span></span>
+                    </label>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- PR Info Box -->
-            <div class="form-section collapsible collapsed" style="margin-top: 6px;" id="pr-info-box-section">
-              <div class="form-section-header">
-                <div style="display:flex; align-items:center; gap:6px; flex:1;">
-                  <span class="form-section-chevron">▾</span>
-                  PR Info Box
+              <!-- Extraction Patterns -->
+              <div class="form-section" style="margin-top: 12px;">
+                <div class="form-section-header">
+                  Extraction patterns
+                  <button class="btn btn-secondary btn-sm" id="add-token-preset-btn" hidden>+ Add pattern</button>
                 </div>
-                <label class="switch" title="Enable PR Info Box" onclick="event.stopPropagation()">
-                  <input type="checkbox" id="show-pr-info-box" checked>
-                  <span class="switch-track"></span>
-                  <span class="switch-thumb"></span>
-                </label>
-              </div>
-              <div class="form-section-body">
-                <div class="inline-toggle-row">
-                  <label class="inline-toggle">
-                    Repo <i class="field-hint" data-hint="Show the repository name (owner/repo) in the info box.">i</i>
-                    <span class="switch">
-                      <input type="checkbox" id="pr-info-box-show-repo" checked>
-                      <span class="switch-track"></span>
-                      <span class="switch-thumb"></span>
-                    </span>
-                  </label>
-                  <label class="inline-toggle">
-                    Author <i class="field-hint" data-hint="Show the PR author's username in the info box.">i</i>
-                    <span class="switch">
-                      <input type="checkbox" id="pr-info-box-show-author" checked>
-                      <span class="switch-track"></span>
-                      <span class="switch-thumb"></span>
-                    </span>
-                  </label>
-                  <label class="inline-toggle">
-                    Head branch <i class="field-hint" data-hint="Show the source (head) branch name in the info box.">i</i>
-                    <span class="switch">
-                      <input type="checkbox" id="pr-info-box-show-head" checked>
-                      <span class="switch-track"></span>
-                      <span class="switch-thumb"></span>
-                    </span>
-                  </label>
-                  <label class="inline-toggle">
-                    Base branch <i class="field-hint" data-hint="Show the target (base) branch name with a refresh button in the info box.">i</i>
-                    <span class="switch">
-                      <input type="checkbox" id="pr-info-box-show-base" checked>
-                      <span class="switch-track"></span>
-                      <span class="switch-thumb"></span>
-                    </span>
-                  </label>
+                <div id="extraction-patterns-hint" style="padding: 12px 15px;">
+                  <p class="sub-note" style="margin:0;">Build a library of reusable token templates shared across all actions. <a href="#" id="show-extraction-patterns-link">Set up extraction patterns →</a></p>
+                </div>
+                <div id="extraction-patterns-body" hidden>
+                  <div id="token-presets-list" style="padding: 10px 12px 4px;"></div>
+                  <p class="sub-note" style="padding: 0 15px 12px;">A shared library of reusable extraction templates. Use them as starting points when adding variables to an action — each copy is independent. Sources: <code>commentBody</code>, <code>commentAuthor</code>, <code>prTitle</code>, <code>prBranch</code>, <code>prNumber</code>, <code>prAuthor</code>, <code>repo</code>. Use <strong>Transform</strong> steps inside each token to post-process the extracted value.</p>
                 </div>
               </div>
+
             </div>
+          </section>
 
-            <div class="form-section" style="margin-top: 6px;">
-              <div class="form-section-header">
-                Extraction Patterns
-                <button class="btn btn-secondary btn-sm" id="add-token-preset-btn" hidden>+ Add Pattern</button>
-              </div>
-              <div id="extraction-patterns-hint" style="padding: 10px 14px;">
-                <p class="hint" style="margin:0;">Build a library of reusable token templates shared across all actions. <a href="#" id="show-extraction-patterns-link">Set up Extraction Patterns →</a></p>
-              </div>
-              <div id="extraction-patterns-body" hidden>
-                <div id="token-presets-list" style="padding: 8px 0 4px;"></div>
-                <p class="sub-note" style="padding: 0 14px 10px;">A shared library of reusable extraction templates. Use them as starting points when adding variables to an action — each copy is independent. Sources: <code>commentBody</code>, <code>commentAuthor</code>, <code>prTitle</code>, <code>prBranch</code>, <code>prNumber</code>, <code>prAuthor</code>, <code>repo</code>. Use <strong>Transform</strong> steps inside each token to post-process the extracted value with chained regex replacements.</p>
-              </div>
+          <!-- Groups -->
+          <section class="tab-panel" id="tab-groups" hidden>
+            <div class="pane-head">
+              <div class="eyebrow">Overrides · repo groups</div>
+              <h1>Groups</h1>
+              <p>Override the global config for a set of repos matched by name or regex. First matching group wins.</p>
             </div>
-          </div>
-        </div>
+            <div class="precedence">
+              <div class="prec-flow">
+                <span class="prec-stage">global</span>
+                <span class="prec-arrow">─▶</span>
+                <span class="prec-stage is-active">group</span>
+                <span class="prec-arrow">─▶</span>
+                <span class="prec-stage">repo</span>
+              </div>
+              <span class="prec-rule">each layer overrides the one before · <b>most specific wins</b></span>
+            </div>
+            <p class="pane-note" style="margin-top:-8px; margin-bottom:16px;">
+              Patterns in <code>Match repos</code> are tested top-to-bottom as an exact name, then as a regex.
+              Toggle a section to override global config — unselected sections are inherited. Choose <strong>Replace</strong> to swap inherited actions out, or <strong>Extend</strong> to append after them. Enabling an override auto-fills from the current global config. Extraction patterns are global-only.
+            </p>
+            <div id="groups-list"></div>
+            <button class="add-row-btn" id="add-group-btn">+ Add group</button>
+          </section>
 
-      </div><!-- /tab-global -->
+          <!-- Repos -->
+          <section class="tab-panel" id="tab-repos" hidden>
+            <div class="pane-head">
+              <div class="eyebrow">Overrides · single repo</div>
+              <h1>Repos</h1>
+              <p>Override the config for one specific repository. The most targeted layer — beats both global and any matching group.</p>
+            </div>
+            <div class="precedence">
+              <div class="prec-flow">
+                <span class="prec-stage">global</span>
+                <span class="prec-arrow">─▶</span>
+                <span class="prec-stage">group</span>
+                <span class="prec-arrow">─▶</span>
+                <span class="prec-stage is-active">repo</span>
+              </div>
+              <span class="prec-rule">each layer overrides the one before · <b>most specific wins</b></span>
+            </div>
+            <p class="pane-note" style="margin-top:-8px; margin-bottom:16px;">
+              <strong>Exact repo name only</strong> — format <code>owner/repo</code>, no regex. Enabling an override auto-fills from the resolved parent config (global + matching group). A repo listed here is never excluded by <code>repoFilter</code>.
+            </p>
+            <div id="repos-list"></div>
+            <button class="add-row-btn" id="add-repo-btn">+ Add repo</button>
+          </section>
 
-      <!-- Groups tab -->
-      <div class="tab-panel" id="tab-groups" hidden>
-        <div class="tab-hint">
-          <strong>First matching group wins.</strong> Patterns in <code>Match repos</code> are tested top-to-bottom as an exact name, then as a regex.<br>
-          For each group, toggle sections to override global config — unselected sections are inherited. Choose <strong>Replace</strong> to swap out inherited actions entirely, or <strong>Extend</strong> to append yours after them. Enabling an override for the first time auto-fills from the current global config. Extraction patterns are global-only.
-        </div>
-        <div class="tab-actions"><button class="btn btn-secondary btn-sm" id="add-group-btn">+ Add Group</button></div>
-        <div id="groups-list"></div>
-      </div>
+        </div><!-- /#config-section -->
+      </div><!-- /.workspace-scroll -->
 
-      <!-- Repos tab -->
-      <div class="tab-panel" id="tab-repos" hidden>
-        <div class="tab-hint">
-          <strong>Exact repo name only</strong> — format <code>owner/repo</code>, no regex. Overrides both global and any matching group. Enabling an override auto-fills from the resolved parent config (global + matching group). A repo listed here is never excluded by <code>repoFilter</code>.
-        </div>
-        <div class="tab-actions"><button class="btn btn-secondary btn-sm" id="add-repo-btn">+ Add Repo</button></div>
-        <div id="repos-list"></div>
-      </div>
-
-      <!-- Shared actions -->
+      <!-- Sticky save bar (hidden on the Token pane via data-active) -->
       <div class="config-action-bar">
-        <button class="btn btn-primary"   id="save-config-btn">Save Config</button>
-        <button class="btn btn-secondary" id="discard-config-btn">Discard Changes</button>
-        <button class="btn btn-danger"    id="reset-config-btn">Reset to Defaults</button>
-        <button class="btn btn-secondary" id="json-config-btn">{ } JSON</button>
         <span class="unsaved-indicator" id="unsaved-indicator" hidden>Unsaved changes</span>
         <p class="status" id="config-status-msg"></p>
+        <button class="btn btn-primary"   id="save-config-btn">Save changes</button>
+        <button class="btn btn-secondary" id="discard-config-btn">Discard</button>
+        <button class="btn btn-danger"    id="reset-config-btn">Reset to defaults</button>
       </div>
-    </div>
-
-    <hr class="divider" />
-    <p class="footer">
-      Made with ❤️ by <a href="https://panshul.dev/studio" target="_blank" style="color:#656d76;">Mostly Works Studio</a>
-      &nbsp;·&nbsp;
-      <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank" style="color:#656d76;">⭐ Leave a review</a>
-      &nbsp;·&nbsp;
-      <a href="https://github.com/Mostly-Works-Studio/LazyGithub" target="_blank" style="color:#656d76;">Contribute on GitHub →</a>
-    </p>
+    </main>
 
   </div>
+
   <script src="config-defaults.js"></script>
   <script src="options.js"></script>
 </body>

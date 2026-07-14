@@ -1600,6 +1600,21 @@ function scan() {
   injectInfoBox();
 }
 
+// Remove every button LazyGitHub injected and clear the guard flags that mark a
+// container/link as "already processed", so the next scan() rebuilds them from the
+// current CONFIG. Lets config edits apply to open PR tabs without a page reload.
+function teardownInjectedButtons() {
+  // Header buttons carry .wd-build-btn / .wd-btn; sticky-header buttons are styled
+  // inline and only marked with data-wd-build — remove all three.
+  document.querySelectorAll('.wd-btn, .wd-build-btn, [data-wd-build]').forEach(el => el.remove());
+  document.querySelector('.wd-action-menu')?.remove();
+  document.querySelectorAll('[data-wd-build-btn]').forEach(el => delete el.dataset.wdBuildBtn);
+  document.querySelectorAll('[data-wd-attached]').forEach(el => delete el.dataset.wdAttached);
+  // Drop the info box too so its row/visibility settings re-render on the next scan.
+  document.getElementById('wd-info-box')?.remove();
+  document.body.removeAttribute('data-wd-info-fetching');
+}
+
 function init() {
   chrome.storage.sync.get(['extensionConfig', 'githubToken'], data => {
     GLOBAL_CONFIG    = data.extensionConfig ?? DEFAULT_CONFIG;
@@ -1616,7 +1631,9 @@ function init() {
       GLOBAL_CONFIG = changes.extensionConfig.newValue ?? DEFAULT_CONFIG;
       const pr      = parsePrFromUrl();
       CONFIG        = resolveConfig(GLOBAL_CONFIG, pr?.repo ?? '');
-      injectInfoBox();
+      // Rebuild injected buttons from the new config — no page reload needed.
+      teardownInjectedButtons();
+      scan();
     }
     if (changes.githubToken) {
       TOKEN_CONFIGURED = !!changes.githubToken.newValue;

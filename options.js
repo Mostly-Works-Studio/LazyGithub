@@ -58,9 +58,11 @@ const clearBtn           = document.getElementById('clear-btn');
 const cancelBtn          = document.getElementById('cancel-btn');
 const statusMsg          = document.getElementById('status-msg');
 
-tokenSection.querySelector('.feedback-section-header').addEventListener('click', () => {
-  tokenSection.classList.toggle('collapsed');
-});
+// Reflects token-connected state on the "Token" nav item (green dot).
+const tokenNavItem = document.querySelector('.tab-btn[data-tab="token"]');
+function setTokenNavConnected(connected) {
+  tokenNavItem?.classList.toggle('nav-connected', connected);
+}
 
 function showStatus(message, type) {
   statusMsg.textContent = message;
@@ -114,7 +116,7 @@ function showTokenConfigured(token) {
   tokenMask.textContent     = `••••••••••••${token.slice(-4)}`;
   tokenInput.value          = '';
   cancelBtn.hidden          = true;
-  tokenSection.classList.add('collapsed');
+  setTokenNavConnected(true);
 }
 
 function showTokenInput(showCancel = false) {
@@ -123,7 +125,7 @@ function showTokenInput(showCancel = false) {
   tokenBadge.hidden         = true;
   cancelBtn.hidden          = !showCancel;
   clearValidationStatus();
-  tokenSection.classList.remove('collapsed');
+  setTokenNavConnected(false);
   tokenInput.focus();
 }
 
@@ -213,10 +215,6 @@ document.getElementById('show-extraction-patterns-link').addEventListener('click
   revealExtractionPatterns();
 });
 
-document.getElementById('additional-settings-section').querySelector('.feedback-section-header').addEventListener('click', () => {
-  document.getElementById('additional-settings-section').classList.toggle('collapsed');
-});
-
 document.getElementById('repo-filter-section').querySelector('.form-section-header').addEventListener('click', () => {
   document.getElementById('repo-filter-section').classList.toggle('collapsed');
 });
@@ -229,42 +227,58 @@ const reposCount         = document.getElementById('repos-count');
 let lastSavedConfig = DEFAULT_CONFIG;
 
 let statusTimer = null;
-function showConfigStatus(message, type) {
+function showConfigStatus(message, type, { duration = 4000 } = {}) {
   configStatusMsg.textContent = message;
   configStatusMsg.className   = `status ${type}`;
   if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
-  // Success is transient; errors persist until the next edit or save.
-  if (type === 'success') {
+  // Success and warn are transient; errors persist until the next edit or save.
+  if (type === 'success' || type === 'warn') {
     statusTimer = setTimeout(() => {
       configStatusMsg.textContent = '';
       configStatusMsg.className = 'status';
       statusTimer = null;
-    }, 4000);
+      refreshUnsavedChip();
+    }, duration);
   }
+  refreshUnsavedChip();
 }
 function clearConfigStatus() {
   if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
   configStatusMsg.textContent = '';
   configStatusMsg.className = 'status';
+  refreshUnsavedChip();
 }
 
 // ── Dirty-state tracking ───────────────────────────────────────────────────────
 let isDirty = false;
 const unsavedIndicator = document.getElementById('unsaved-indicator');
+// The "Unsaved changes" chip and a transient toast say the same thing, so show the
+// chip only when dirty AND no toast is currently visible — they never overlap.
+function refreshUnsavedChip() {
+  if (unsavedIndicator) unsavedIndicator.hidden = !(isDirty && !statusTimer);
+}
 function markDirty() {
   if (isDirty) return;
   isDirty = true;
   saveConfigBtn.classList.add('btn--attention');
-  if (unsavedIndicator) unsavedIndicator.hidden = false;
-  clearConfigStatus();
+  // Clear a stale persistent message (e.g. a validation error) on first edit, but
+  // leave a live transient toast running — refreshUnsavedChip keeps them exclusive.
+  if (!statusTimer && configStatusMsg.textContent) {
+    configStatusMsg.textContent = '';
+    configStatusMsg.className = 'status';
+  }
+  refreshUnsavedChip();
 }
 function markClean() {
   isDirty = false;
   saveConfigBtn.classList.remove('btn--attention');
-  if (unsavedIndicator) unsavedIndicator.hidden = true;
+  refreshUnsavedChip();
 }
 
 function switchToTab(tabName) {
+  // Guard against an unknown pane blanking the workspace — fall back to PR Actions.
+  if (!document.getElementById(`tab-${tabName}`)) tabName = 'pr-actions';
+  document.querySelector('.app-shell')?.setAttribute('data-active', tabName);
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('tab-btn--active', b.dataset.tab === tabName)
   );
@@ -1424,7 +1438,7 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   return card;
 }
 
-// ── Section form builders (used in Global tab AND override cards) ─────────────
+// ── Section form builders (used in the Global panes AND override cards) ─────────
 
 function buildActionFormEl(initAction) {
   const action = initAction ?? { type: 'comment', comment: '' };
@@ -1809,7 +1823,7 @@ function loadReposFromConfig(repos) {
   for (const [name, config] of Object.entries(repos ?? {})) reposList.append(makeRepoCard(name, config));
 }
 
-// ── Add action buttons (Global tab) ──────────────────────────────────────────
+// ── Add action buttons (Global panes) ─────────────────────────────────────────
 
 function flashHighlight(el) {
   el.classList.remove('wd-highlight');
@@ -1868,7 +1882,7 @@ enableDragSort(prActionsList,      '.deploy-card');
 enableDragSort(commentActionsList, '.deploy-card');
 enableDragSort(groupsList,         '.override-card');
 
-// ── Form ↔ Config (Global tab) ────────────────────────────────────────────────
+// ── Form ↔ Config (Global panes) ──────────────────────────────────────────────
 
 function configToForm(config) {
   // Repo filter
@@ -1956,6 +1970,15 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => switchToTab(btn.dataset.tab));
 });
 
+// Reveal an initial pane on load: jump to Token when it's missing or the page was
+// opened for a token reason, otherwise land on PR Actions.
+{
+  const needsToken = reason === 'no-token';
+  chrome.storage.sync.get('githubToken', ({ githubToken }) => {
+    switchToTab(needsToken || !githubToken ? 'token' : 'pr-actions');
+  });
+}
+
 // ── Dirty tracking + save shortcut ─────────────────────────────────────────────
 
 const configSection = document.getElementById('config-section');
@@ -2006,10 +2029,10 @@ function showJsonModal() {
   header.className = 'json-modal-header';
   const title = document.createElement('h3');
   title.textContent = 'Config JSON';
-  const closeBtn = mkSmallBtn('×', 'btn btn-secondary btn-sm', () => overlay.remove());
+  const closeBtn = mkSmallBtn('×', 'btn btn-secondary btn-sm', () => closeModal());
   header.append(title, closeBtn);
 
-  const hint = mkEl('p', 'hint', 'Copy to share with teammates. To import, paste a config JSON and click Apply — it loads into the form for review before saving.');
+  const hint = mkEl('p', 'hint', 'Copy to share with teammates. To import, paste a config JSON and click Apply — it loads into the editor for review before saving.');
 
   const textarea = document.createElement('textarea');
   textarea.value = JSON.stringify(currentConfig, null, 2);
@@ -2051,16 +2074,20 @@ function showJsonModal() {
     }
     loadConfigIntoEditors(parsed);
     markDirty();  // imported but not yet persisted
-    statusEl.textContent = 'Loaded into form. Review and click Save Config to persist.';
-    statusEl.className = 'status success';
+    closeModal();
+    showConfigStatus('Config loaded. Review your settings and click Save changes to persist.', 'warn');
   });
 
   actions.append(copyBtn, applyBtn, statusEl);
   modal.append(header, hint, textarea, actions);
   overlay.append(modal);
 
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-  const onKey = e => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); overlay.remove(); } };
+  const closeModal = () => {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+  };
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  const onKey = e => { if (e.key === 'Escape') closeModal(); };
   document.addEventListener('keydown', onKey);
 
   document.body.append(overlay);
@@ -2147,9 +2174,27 @@ function validateConfig(config) {
 }
 
 
+// Maps a validation error to the pane that actually contains it. The validator still
+// uses the legacy tab: 'global' | 'groups', but the redesign split "global" into
+// separate panes, so resolve the real pane from the error's list / tab here.
+function paneForError(err) {
+  const byList = {
+    'pr-actions-list':      'pr-actions',
+    'comment-actions-list': 'comment-actions',
+    'token-presets-list':   'advanced',
+    'groups-list':          'groups',
+    'repos-list':           'repos',
+  };
+  if (err.locator?.listId && byList[err.locator.listId]) return byList[err.locator.listId];
+  if (err.tab === 'groups') return 'groups';
+  if (err.tab === 'repos')  return 'repos';
+  // Global errors without a locator (thresholds, stacks, repo filter) live in Advanced.
+  return 'advanced';
+}
+
 function highlightValidationError(err) {
   if (!err) return;
-  switchToTab(err.tab);
+  switchToTab(paneForError(err));
   showConfigStatus(err.message, 'error');
   if (!err.locator) return;
 
@@ -2219,7 +2264,7 @@ saveConfigBtn_el.addEventListener('click', () => {
     lastSavedConfig = fullConfig;
     updateTabCounts();
     markClean();
-    showConfigStatus('Config saved. Reload your GitHub tab for changes to take effect.', 'success');
+    showConfigStatus('Config saved.', 'success');
   });
 });
 

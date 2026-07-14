@@ -5,33 +5,76 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Welcome to LazyGitHub</title>
   <style>
+    /* ─────────────────────────────────────────────────────────────────────────
+       LazyGitHub onboarding — themed to the app icon: sleeping cat in a purple
+       nightcap on a sky-blue disc. Indigo accents · warm paper · nightcap purple.
+    ───────────────────────────────────────────────────────────────────────── */
+    :root {
+      --ink:           #141a33;
+      --ink-2:         #1e2545;
+      --accent:        #7c53e0;
+      --accent-strong: #6a41cf;
+      --accent-soft:   #f2ecfd;
+      --sky:           #6eb9ff;
+      --paper:         #f4f2f7;
+      --surface:       #ffffff;
+      --line:          #e7e2db;
+      --line-soft:     #f0ece6;
+      --text:          #1f2328;
+      --muted:         #6b6560;
+      --faint:         #9a938c;
+      --green:         #1a7f37;
+      --green-bg:      #dafbe1;
+      --green-line:    #aceebb;
+      --red:           #cf222e;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-family: var(--sans);
       font-size: 14px;
-      color: #1f2328;
-      background: #f6f8fa;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 480px at 50% -10%, rgba(124,83,224,0.10), transparent 60%),
+        radial-gradient(760px 360px at 90% 0%, rgba(110,185,255,0.10), transparent 55%),
+        var(--paper);
       min-height: 100vh;
       display: flex;
       align-items: flex-start;
       justify-content: center;
-      padding: 48px 5%;
+      padding: 56px 5%;
+      -webkit-font-smoothing: antialiased;
     }
 
     .card {
-      background: white;
-      border: 1px solid #d0d7de;
-      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 16px;
       padding: 40px;
       width: 100%;
       max-width: clamp(560px, 70vw, 860px);
+      box-shadow: 0 1px 2px rgba(20,26,51,0.04), 0 12px 40px rgba(20,26,51,0.08);
     }
 
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-strong); text-decoration: underline; }
+
     /* ── Header ── */
-    .header { margin-bottom: 36px; }
-    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-    .header p  { color: #656d76; line-height: 1.6; }
+    .header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 36px; }
+    .header-mark {
+      width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; display: block;
+      box-shadow: 0 3px 14px rgba(124,83,224,0.35);
+    }
+    .header-text { flex: 1; }
+    .eyebrow {
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 4px;
+    }
+    .header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
+    .header p  { color: var(--muted); line-height: 1.6; }
 
     /* ── Steps ── */
     .steps { display: flex; flex-direction: column; }
@@ -46,42 +89,42 @@
     .step:not(:last-child)::before {
       content: '';
       position: absolute;
-      left: 13px;
-      top: 30px;
+      left: 14px;
+      top: 32px;
       bottom: -28px;
       width: 2px;
-      background: #d0d7de;
+      background: var(--line);
       transition: background 0.3s;
     }
+    .step--done:not(:last-child)::before { background: var(--accent); }
 
     /* Pending steps are dimmed and non-interactive */
     .step--pending {
-      opacity: 0.38;
+      opacity: 0.4;
       pointer-events: none;
     }
 
-    /* Active step has a highlighted connector above it */
+    /* Active step: accent circle with glow */
     .step--active .step-num {
-      background: #0969da;
-      box-shadow: 0 0 0 4px rgba(9, 105, 218, 0.15);
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(124,83,224,0.18);
     }
 
     /* Completed step: white circle, green tick */
-    .step--done .step-num {      background: white;
-      border: 2px solid #d0d7de;
-      color: #1a7f37;
-      font-size: 13px;
+    .step--done .step-num {
+      background: var(--surface);
+      border: 2px solid var(--green-line);
+      color: var(--green);
+      font-size: 14px;
     }
-    .step--done .step-num::after {
-      content: '✓';
-    }
+    .step--done .step-num::after { content: '✓'; }
     .step--done .step-num span { display: none; }
 
     .step-num {
-      width: 28px;
-      height: 28px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
-      background: #6e7781;
+      background: #8b93a5;
       color: white;
       font-size: 12px;
       font-weight: 700;
@@ -92,28 +135,30 @@
       position: relative;
       z-index: 1;
       margin-top: 2px;
-      transition: background 0.3s, box-shadow 0.3s;
+      transition: background 0.3s, box-shadow 0.3s, border-color 0.3s;
     }
 
-    .step-body { flex: 1; }
-    .step-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-    .step-desc  { font-size: 13px; color: #656d76; line-height: 1.6; margin-bottom: 12px; }
+    .step-body { flex: 1; padding-top: 3px; }
+    .step-title { font-size: 15.5px; font-weight: 650; margin-bottom: 6px; }
+    .step-desc  { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
 
-    /* Mute buttons once a step is completed */
-    .step--done .btn {
-      opacity: 0.4;
-    }
+    /* Completed steps recede: content fades, green tick + connector stay crisp */
+    .step--done .step-title,
+    .step--done .step-desc,
+    .step--done .scopes,
+    .step--done .btn,
+    .step--done .ob-input-row { opacity: 0.4; }
 
     /* ── Scopes box ── */
     .scopes {
-      background: #f6f8fa;
-      border: 1px solid #d0d7de;
-      border-radius: 6px;
-      padding: 12px 14px;
+      background: var(--accent-soft);
+      border: 1px solid #e2d7fa;
+      border-radius: 10px;
+      padding: 13px 15px;
       margin-bottom: 14px;
     }
     .scopes ul { padding-left: 18px; }
-    .scopes li { font-size: 12px; color: #656d76; margin-bottom: 3px; line-height: 1.5; }
+    .scopes li { font-size: 12px; color: var(--muted); margin-bottom: 4px; line-height: 1.55; }
 
     /* ── Button preview ── */
     .btn-preview {
@@ -126,7 +171,7 @@
       display: inline-flex;
       align-items: center;
       padding: 3px 12px;
-      border-radius: 6px;
+      border-radius: 7px;
       font-size: 12px;
       font-weight: 600;
       color: white;
@@ -139,32 +184,35 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 7px 16px;
-      border-radius: 6px;
+      padding: 8px 17px;
+      border-radius: 9px;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 550;
       cursor: pointer;
       border: 1px solid;
       text-decoration: none;
-      transition: background 0.15s;
+      font-family: var(--sans);
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .btn-primary   { background: #0969da; border-color: #0969da; color: white; }
-    .btn-primary:hover { background: #0860ca; }
-    .btn-secondary { background: white; border-color: #d0d7de; color: #1f2328; }
-    .btn-secondary:hover { background: #f3f4f6; }
-    .btn-success   { background: #1a7f37; border-color: #1a7f37; color: white; }
-    .btn-success:hover { background: #176f30; }
+    .btn:hover { text-decoration: none; }
+    .btn-primary   { background: var(--accent); border-color: var(--accent-strong); color: white; }
+    .btn-primary:hover { background: var(--accent-strong); color: white; }
+    .btn-secondary { background: var(--surface); border-color: var(--line); color: var(--text); }
+    .btn-secondary:hover { background: #f6f3ef; border-color: #dcd5cc; }
+    .btn-success   { background: var(--green); border-color: var(--green); color: white; }
+    .btn-success:hover { background: #176f30; color: white; }
 
     code {
-      font-family: monospace;
-      background: #eaeef2;
+      font-family: var(--mono);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
       padding: 1px 5px;
       border-radius: 4px;
-      font-size: 11px;
+      font-size: 11.5px;
     }
 
     /* ── Divider ── */
-    .divider { border: none; border-top: 1px solid #d0d7de; margin: 32px 0; }
+    .divider { border: none; border-top: 1px solid var(--line); margin: 32px 0; }
 
     /* ── Done banner ── */
     .done-banner {
@@ -172,32 +220,33 @@
       align-items: center;
       gap: 14px;
       padding: 16px 20px;
-      background: #dafbe1;
-      border: 1px solid #aceebb;
-      border-radius: 8px;
+      background: #f4fbf6;
+      border: 1px solid var(--green-line);
+      border-radius: 12px;
     }
     .done-banner.visible { display: flex; }
     .done-icon {
-      width: 34px;
-      height: 34px;
+      width: 36px;
+      height: 36px;
       border-radius: 50%;
-      background: #1a7f37;
+      background: var(--green);
       color: white;
-      font-size: 16px;
+      font-size: 17px;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
-    .done-text h3 { font-size: 14px; font-weight: 600; color: #1a7f37; margin-bottom: 3px; }
+    .done-text h3 { font-size: 14px; font-weight: 650; color: var(--green); margin-bottom: 3px; }
     .done-text p  { font-size: 13px; color: #1f6a30; line-height: 1.5; }
     .done-links { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-    .done-links a { font-size: 12px; color: #0969da; text-decoration: none; }
-    .done-links a:hover { text-decoration: underline; }
-    .done-links-sep { font-size: 12px; color: #656d76; }
+    .done-links a { font-size: 12px; }
+    .done-links-sep { font-size: 12px; color: var(--faint); }
 
     /* ── Footer ── */
-    .footer { text-align: center; font-size: 12px; color: #656d76; margin-top: 32px; }
+    .footer { text-align: center; font-size: 12px; color: var(--muted); margin-top: 32px; }
+    .footer a { color: var(--muted); }
+    .footer a:hover { color: var(--accent); }
 
     /* ── Step 3 action buttons ── */
     .ob-step3-actions {
@@ -211,46 +260,49 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.45);
+      background: rgba(20,26,51,0.5);
       z-index: 1000;
       align-items: center;
       justify-content: center;
     }
     .ob-modal-overlay.visible { display: flex; }
     .ob-modal {
-      background: white;
-      border: 1px solid #d0d7de;
-      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
       width: clamp(340px, 60vw, 680px);
       max-height: 80vh;
       display: flex;
       flex-direction: column;
+      box-shadow: 0 20px 50px rgba(20,26,51,0.3);
+      overflow: hidden;
     }
     .ob-modal-header {
       padding: 16px 20px;
-      border-bottom: 1px solid #d0d7de;
+      border-bottom: 1px solid var(--line);
       font-size: 15px;
-      font-weight: 600;
+      font-weight: 650;
     }
     .ob-modal textarea {
       flex: 1;
       resize: none;
       padding: 14px;
-      font-family: monospace;
+      font-family: var(--mono);
       font-size: 12px;
       border: none;
-      border-bottom: 1px solid #d0d7de;
+      border-bottom: 1px solid var(--line);
       outline: none;
       min-height: 260px;
     }
+    .ob-modal textarea:focus { background: #fcfbfe; }
     .ob-modal-status {
       padding: 6px 16px;
       font-size: 12px;
       min-height: 28px;
       line-height: 1.6;
     }
-    .ob-modal-status.error   { color: #cf222e; }
-    .ob-modal-status.success { color: #1a7f37; }
+    .ob-modal-status.error   { color: var(--red); }
+    .ob-modal-status.success { color: var(--green); }
     .ob-modal-actions {
       padding: 12px 16px;
       display: flex;
@@ -266,17 +318,17 @@
     }
     .ob-input-row input {
       flex: 1;
-      padding: 6px 10px;
-      border: 1px solid #d0d7de;
-      border-radius: 6px;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
       font-size: 13px;
-      font-family: monospace;
+      font-family: var(--mono);
       outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
     .ob-input-row input:focus {
-      border-color: #0969da;
-      box-shadow: 0 0 0 3px rgba(9,105,218,0.15);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124,83,224,0.15);
     }
     .ob-token-status {
       font-size: 12px;
@@ -284,8 +336,12 @@
       margin-bottom: 10px;
       line-height: 1.5;
     }
-    .ob-token-status.success { color: #1a7f37; }
-    .ob-token-status.error   { color: #cf222e; }
+    .ob-token-status.success { color: var(--green); }
+    .ob-token-status.error   { color: var(--red); }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -293,8 +349,12 @@
 
     <!-- Header -->
     <div class="header">
-      <h1>Welcome to LazyGitHub</h1>
-      <p>Three quick steps to add one-click actions to your GitHub PRs — post comments, dispatch workflows, create deployments, all without leaving the page.</p>
+      <img class="header-mark" src="icon128.png" alt="LazyGitHub" width="48" height="48" />
+      <div class="header-text">
+        <div class="eyebrow">Welcome</div>
+        <h1>Get started with LazyGitHub</h1>
+        <p>Three quick steps to add shortcuts &amp; automations to your GitHub PRs — post comments, dispatch workflows, create deployments, all without leaving the page.</p>
+      </div>
     </div>
 
     <!-- Steps -->
@@ -309,19 +369,19 @@
             LazyGitHub uses the GitHub API to read PR details, post comments, dispatch workflows, and create deployments — all on your behalf. It needs a Personal Access Token with <code>repo</code> and <code>workflow</code> scopes. Your token is stored locally in your browser and never sent to any server.
           </p>
           <div class="scopes">
-            <p style="font-size:12px;font-weight:600;margin-bottom:6px;color:#1f2328;">Required scopes</p>
+            <p style="font-size:12px;font-weight:650;margin-bottom:6px;color:var(--text);">Required scopes</p>
             <ul>
               <li><code>repo</code> — read PR details, post comments, create deployments, and trigger repository dispatch events</li>
               <li><code>workflow</code> — dispatch GitHub Actions workflows</li>
             </ul>
-            <p style="font-size:11px;color:#656d76;margin-top:8px;line-height:1.5;">
+            <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">
               <strong>Note:</strong> If your organisation enforces SAML SSO, you must also
-              <a href="https://docs.github.com/en/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on" target="_blank" style="color:#0969da;">authorise this token for SSO</a>
+              <a href="https://docs.github.com/en/authentication/authenticating-with-saml-single-sign-on/authorizing-a-personal-access-token-for-use-with-saml-single-sign-on" target="_blank">authorise this token for SSO</a>
               after creating it, otherwise API calls to that org will be rejected.
             </p>
           </div>
           <button class="btn btn-primary" id="create-token-btn">
-            Create Token on GitHub →
+            Create token on GitHub →
           </button>
         </div>
       </div>
@@ -336,7 +396,7 @@
           </p>
           <div class="ob-input-row">
             <input type="password" id="ob-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
-            <button class="btn btn-primary" id="ob-save-btn">Save</button>
+            <button class="btn btn-primary" id="ob-save-btn">Save token</button>
           </div>
           <p id="ob-token-status" class="ob-token-status"></p>
         </div>
@@ -352,7 +412,7 @@
             You can always tweak this later from the extension settings.
           </p>
           <div class="ob-step3-actions">
-            <button class="btn btn-primary" id="ob-configure-btn">Go to Settings &amp; Configure Actions →</button>
+            <button class="btn btn-primary" id="ob-configure-btn">Go to settings &amp; configure actions →</button>
             <button class="btn btn-secondary" id="ob-paste-btn">Already have a config? Paste JSON here</button>
           </div>
         </div>
@@ -376,11 +436,11 @@
     </div>
 
     <p class="footer">
-      Made with ❤️ by <a href="https://panshul.dev/studio" target="_blank" style="color:#656d76;">Mostly Works Studio</a>
+      Made with ❤️ by <a href="https://panshul.dev/studio" target="_blank">Mostly Works Studio</a>
       &nbsp;·&nbsp;
-      <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank" style="color:#656d76;">Chrome Web Store</a>
+      <a href="https://chromewebstore.google.com/detail/bkcfpabfdbkiillkanaeabaplcodppol" target="_blank">Chrome Web Store</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/Mostly-Works-Studio/LazyGithub" target="_blank" style="color:#656d76;">GitHub</a>
+      <a href="https://github.com/Mostly-Works-Studio/LazyGithub" target="_blank">GitHub</a>
     </p>
 
   </div>
@@ -393,7 +453,7 @@
       <div id="ob-paste-status" class="ob-modal-status"></div>
       <div class="ob-modal-actions">
         <button class="btn btn-secondary" id="ob-paste-cancel">Cancel</button>
-        <button class="btn btn-success" id="ob-paste-apply">Validate &amp; Save</button>
+        <button class="btn btn-success" id="ob-paste-apply">Validate &amp; save</button>
       </div>
     </div>
   </div>

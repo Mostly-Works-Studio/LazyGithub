@@ -10,7 +10,7 @@ function activateStep(el) {
 }
 
 function completeStep(el) {
-  el.classList.remove('step--active');
+  el.classList.remove('step--active', 'step--pending');
   el.classList.add('step--done');
 }
 
