@@ -54,9 +54,16 @@ const tokenInputSection  = document.getElementById('token-input-section');
 const tokenInput         = document.getElementById('token-input');
 const saveBtn            = document.getElementById('save-btn');
 const updateBtn          = document.getElementById('update-btn');
+const verifyBtn          = document.getElementById('verify-btn');
 const clearBtn           = document.getElementById('clear-btn');
 const cancelBtn          = document.getElementById('cancel-btn');
 const statusMsg          = document.getElementById('status-msg');
+const createTokenBtn     = document.getElementById('create-token-btn');
+
+const orgSsoPanel       = document.getElementById('org-sso-panel');
+const orgSsoList        = document.getElementById('org-sso-list');
+const orgSsoStatus      = document.getElementById('org-sso-status');
+const orgSsoRefreshBtn  = document.getElementById('org-sso-refresh-btn');
 
 // Reflects token-connected state on the "Token" nav item (green dot).
 const tokenNavItem = document.querySelector('.tab-btn[data-tab="token"]');
@@ -134,7 +141,198 @@ chrome.storage.sync.get('githubToken', ({ githubToken }) => {
   else showTokenInput(false);
 });
 
+createTokenBtn?.addEventListener('click', () => {
+  window.open('https://github.com/settings/tokens/new?scopes=repo,workflow&description=LazyGitHub', '_blank');
+});
+
+// Re-check SSO status whenever the user comes back to this tab — e.g. after
+// authorizing a token in the GitHub tab opened by the "Authorize →" button.
+// Only relevant while the Token pane is the one actually showing.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (document.querySelector('.app-shell')?.getAttribute('data-active') !== 'token') return;
+  chrome.storage.sync.get('githubToken', ({ githubToken }) => {
+    if (githubToken) checkOrgSsoStatus(githubToken);
+  });
+});
+
+// ── Organization SSO status ──────────────────────────────────────────────────
+
+function githubApiHeaders(token) {
+  return {
+    'Authorization':        `Bearer ${token}`,
+    'Accept':               'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+}
+
+function renderOrgSsoRow(org) {
+  const row = document.createElement('div');
+  row.className = `org-sso-row${org.status === 'required' ? ' is-pending' : ''}`;
+  row.dataset.login = org.login;
+
+  const info = document.createElement('div');
+  info.className = 'org-sso-info';
+  const avatar = document.createElement('img');
+  avatar.className = 'org-sso-avatar';
+  avatar.src = org.avatarUrl || '';
+  avatar.alt = '';
+  const name = document.createElement('span');
+  name.className = 'org-sso-name';
+  name.textContent = org.login;
+  info.append(avatar, name);
+  row.appendChild(info);
+
+  if (org.status === 'authorized') {
+    const badge = document.createElement('span');
+    badge.className   = 'badge badge-success';
+    badge.textContent = '✓ Authorized';
+    row.appendChild(badge);
+  } else if (org.status === 'required') {
+    const right = document.createElement('div');
+    right.style.display    = 'flex';
+    right.style.alignItems = 'center';
+    right.style.gap        = '8px';
+    const badge = document.createElement('span');
+    badge.className   = 'badge badge-warn';
+    badge.textContent = 'SSO required';
+    const authBtn = document.createElement('button');
+    authBtn.className   = 'btn btn-accent btn-xs';
+    authBtn.textContent = 'Authorize →';
+    authBtn.addEventListener('click', () => authorizeOrgSso(org.login, org.ssoUrl, authBtn));
+    right.append(badge, authBtn);
+    row.appendChild(right);
+  } else if (org.status === 'checking') {
+    const badge = document.createElement('span');
+    badge.className   = 'badge';
+    badge.style.background = 'var(--line-soft)';
+    badge.style.color      = 'var(--muted)';
+    badge.textContent = 'Checking…';
+    row.appendChild(badge);
+  } else {
+    const badge = document.createElement('span');
+    badge.className   = 'badge';
+    badge.style.background = 'var(--line-soft)';
+    badge.style.color      = 'var(--muted)';
+    badge.textContent = 'Couldn’t verify';
+    row.appendChild(badge);
+  }
+
+  return row;
+}
+
+function parseSsoAuthUrl(ssoHeader) {
+  const urlMatch = ssoHeader.match(/url=([^;]+)/);
+  return urlMatch ? decodeURIComponent(urlMatch[1]) : null;
+}
+
+// GET /orgs/{login} is mostly public org metadata — GitHub serves it (and even
+// marks it cache-control: public) regardless of SSO authorization, so it can
+// never reflect a deauthorized token. The only reliable per-org signal is a
+// genuinely private, user-scoped resource: the caller's own membership record
+// via GET /user/memberships/orgs/{org}. That 403s with `X-GitHub-SSO: required`
+// when the token isn't authorized, and actually flips back on deauthorization.
+async function probeOrgSso(login, token) {
+  try {
+    const res = await fetch(`https://api.github.com/user/memberships/orgs/${encodeURIComponent(login)}`, {
+      headers: githubApiHeaders(token),
+      cache: 'no-store',
+    });
+    if (res.ok) return { status: 'authorized', ssoUrl: null };
+    if (res.status === 403) {
+      const sso = res.headers.get('x-github-sso') || '';
+      if (/^required/i.test(sso)) return { status: 'required', ssoUrl: parseSsoAuthUrl(sso) };
+    }
+    return { status: 'unknown', ssoUrl: null };
+  } catch {
+    return { status: 'unknown', ssoUrl: null };
+  }
+}
+
+async function authorizeOrgSso(login, cachedUrl, btn) {
+  if (cachedUrl) { window.open(cachedUrl, '_blank'); return; }
+  const originalText = btn.textContent;
+  btn.disabled    = true;
+  btn.textContent = 'Opening…';
+  try {
+    const { githubToken } = await new Promise(resolve => chrome.storage.sync.get('githubToken', resolve));
+    const fresh = githubToken ? await probeOrgSso(login, githubToken) : null;
+    window.open(fresh?.ssoUrl || 'https://github.com/settings/tokens', '_blank');
+  } catch {
+    window.open('https://github.com/settings/tokens', '_blank');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = originalText;
+  }
+}
+
+function updateOrgSsoSummary(results) {
+  const stillChecking = results.some(o => o.status === 'checking');
+  const requiredCount = results.filter(o => o.status === 'required').length;
+  if (stillChecking) {
+    orgSsoStatus.textContent = '';
+    orgSsoStatus.className   = 'status';
+  } else if (requiredCount > 0) {
+    orgSsoStatus.textContent = `${requiredCount} organization${requiredCount === 1 ? '' : 's'} need SSO authorization.`;
+    orgSsoStatus.className   = 'status warn';
+  } else {
+    orgSsoStatus.textContent = '';
+    orgSsoStatus.className   = 'status';
+  }
+}
+
+async function checkOrgSsoStatus(token) {
+  orgSsoStatus.textContent = '';
+  orgSsoStatus.className   = 'status';
+  try {
+    const res = await fetch('https://api.github.com/user/orgs?per_page=100', {
+      headers: githubApiHeaders(token),
+    });
+    if (!res.ok) { orgSsoPanel.hidden = true; return; }
+
+    const orgs = await res.json();
+    if (orgs.length === 0) { orgSsoPanel.hidden = true; return; }
+
+    // Render the org list immediately with a "checking" state, then patch
+    // each row in place as its own SSO probe resolves in the background —
+    // avoids a blank loading state while every org is checked up front.
+    const results = orgs.map(o => ({ login: o.login, avatarUrl: o.avatar_url, status: 'checking', ssoUrl: null }));
+
+    orgSsoPanel.hidden   = false;
+    orgSsoList.innerHTML = '';
+    for (const org of results) orgSsoList.appendChild(renderOrgSsoRow(org));
+    updateOrgSsoSummary(results);
+
+    await Promise.all(results.map(async (org, i) => {
+      const probe = await probeOrgSso(org.login, token);
+      results[i] = { ...org, ...probe };
+      const oldRow = orgSsoList.querySelector(`.org-sso-row[data-login="${CSS.escape(org.login)}"]`);
+      oldRow?.replaceWith(renderOrgSsoRow(results[i]));
+      updateOrgSsoSummary(results);
+    }));
+  } catch {
+    orgSsoPanel.hidden = true;
+  }
+}
+
+orgSsoRefreshBtn?.addEventListener('click', () => {
+  chrome.storage.sync.get('githubToken', ({ githubToken }) => {
+    if (githubToken) checkOrgSsoStatus(githubToken);
+  });
+});
+
 updateBtn.addEventListener('click', () => showTokenInput(true));
+
+verifyBtn?.addEventListener('click', () => {
+  chrome.storage.sync.get('githubToken', ({ githubToken }) => {
+    if (!githubToken) {
+      showStatus('No token saved to verify.', 'error');
+      return;
+    }
+    validateToken(githubToken);
+    checkOrgSsoStatus(githubToken);
+  });
+});
 
 cancelBtn.addEventListener('click', () => {
   clearValidationStatus();
@@ -163,6 +361,7 @@ saveBtn.addEventListener('click', () => {
   chrome.storage.sync.set({ githubToken: token }, () => {
     showTokenConfigured(token);
     showStatus('Token saved successfully.', 'success');
+    checkOrgSsoStatus(token);
   });
 });
 
@@ -170,6 +369,7 @@ clearBtn.addEventListener('click', () => {
   chrome.storage.sync.remove('githubToken', () => {
     showTokenInput(false);
     showStatus('Token removed.', 'success');
+    orgSsoPanel.hidden = true;
   });
 });
 
@@ -1967,7 +2167,14 @@ function loadConfigIntoEditors(config) {
 // ── Tab switching ─────────────────────────────────────────────────────────────
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => switchToTab(btn.dataset.tab));
+  btn.addEventListener('click', () => {
+    switchToTab(btn.dataset.tab);
+    if (btn.dataset.tab === 'token') {
+      chrome.storage.sync.get('githubToken', ({ githubToken }) => {
+        if (githubToken) checkOrgSsoStatus(githubToken);
+      });
+    }
+  });
 });
 
 // Reveal an initial pane on load: jump to Token when it's missing or the page was
@@ -1975,7 +2182,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 {
   const needsToken = reason === 'no-token';
   chrome.storage.sync.get('githubToken', ({ githubToken }) => {
-    switchToTab(needsToken || !githubToken ? 'token' : 'pr-actions');
+    const landingTab = needsToken || !githubToken ? 'token' : 'pr-actions';
+    switchToTab(landingTab);
+    if (landingTab === 'token' && githubToken) checkOrgSsoStatus(githubToken);
   });
 }
 
