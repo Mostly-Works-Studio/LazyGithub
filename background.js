@@ -210,7 +210,8 @@ function extractRows(tokens, prCtx) {
   }
 
   // Line-by-line scan: a line becomes a row when at least one token regex matches.
-  // Tokens that don't match on a given line fall back to their default value.
+  // Tokens that don't match on a given line fall back to their default value if one
+  // is configured; otherwise the whole row is skipped.
   // Deduplication is keyed on the full set of extracted values (not a single anchor).
   const rows = [];
   const seen = new Set();
@@ -228,10 +229,16 @@ function extractRows(tokens, prCtx) {
         if (m !== null) {
           value = m[1] ?? m[0];
           anyMatched = true;
+        } else if (token.default) {
+          value = token.default;
         } else {
-          value = token.default ?? '';
+          skipRow = true;
+          break;
         }
-      } catch { value = token.default ?? ''; }
+      } catch {
+        if (token.default) { value = token.default; }
+        else { skipRow = true; break; }
+      }
 
       value = applyReplaceSteps(value, token.replace);
       if ((token.skip ?? []).includes(value)) { skipRow = true; break; }

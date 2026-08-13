@@ -1634,7 +1634,7 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const varField = cfield('Variables', 'Extract named values from PR context and use them as {placeholders} in the action fields below');
   varField.append(tokenList, addTokenSel);
   if (allowCommentSources) {
-    const matchNote = mkEl('p', 'sub-note', 'For comment actions: each line where at least one variable\'s pattern matches creates a separate action invocation. Variables whose pattern doesn\'t match on that line use their fallback value.');
+    const matchNote = mkEl('p', 'sub-note', 'For comment actions: each line where at least one variable\'s pattern matches creates a separate action invocation. Variables whose pattern doesn\'t match on that line use their fallback value\nPlease note: If a variable has no fallback set, the line is skipped entirely.');
     varField.append(matchNote);
   }
 

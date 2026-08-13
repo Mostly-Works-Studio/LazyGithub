@@ -50,7 +50,7 @@ Before a message is sent to background, `content.js`:
 4. Substitutes all `{input:...}` values into the action before dispatch
 
 **Token extraction** (`background.js:extractRows`):
-- `commentBody` tokens scan the comment line-by-line. A line becomes a row when **any** token's regex matches it. Tokens that don't match on a given line fall back to their `default` value.
+- `commentBody` tokens scan the comment line-by-line. A line becomes a row when **any** token's regex matches it. Tokens that don't match on a given line fall back to their `default` value; if a token misses and has no `default` set, the whole row is skipped.
 - All other source types (`prTitle`, `prBranch`, etc.) are scalar — resolved once and shared across rows.
 - `onMultiple: "first"` slices rows to one; `"all"` dispatches for every matched row (with a 1-second delay between dispatches).
 - If a regex has a capture group, group 1 is the value; otherwise the full match is used.

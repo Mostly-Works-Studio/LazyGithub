@@ -104,6 +104,7 @@ Applies to all repos unless overridden by a group or repo entry. In the settings
   // Buttons next to matching strings in PR comments.
   // Row extraction: each comment line where at least one commentBody token's pattern matches becomes a row.
   // Tokens whose pattern doesn't match on a given line fall back to their default value for that row.
+  // If a token misses its pattern and has no default set, the entire row is skipped.
   // onMultiple: "all" — trigger the action for each matching row; "first" — trigger only for the first match.
   // filter.authors: show only on comments from matching usernames or regexes; empty = all authors.
   "commentActions": [
