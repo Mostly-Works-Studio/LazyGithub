@@ -249,17 +249,100 @@ async function probeOrgSso(login, token) {
   }
 }
 
+// Marks the GitHub page we send the popup back to after SSO is granted, so we
+// can detect completion by watching the tab's own navigation instead of
+// polling our API on a timer. GitHub validates `return_to` as a same-origin
+// relative path (its open-redirect guard), so we can't point it at our
+// extension or an external page — only at a real github.com page, tagged
+// with this marker so we can recognize it in chrome.tabs.onUpdated. Landing on
+// our own repo (rather than /settings/tokens) means that even if the
+// onUpdated listener somehow misses the redirect, the page the user is left
+// looking at is still clearly "ours" instead of a bare GitHub settings page.
+const SSO_RETURN_MARKER = 'lazygithub_sso_done';
+const SSO_RETURN_PATH   = '/Mostly-Works-Studio/LazyGithub';
+
+function buildTrackedSsoUrl(ssoUrl, login) {
+  try {
+    const url = new URL(ssoUrl);
+    url.searchParams.set('return_to', `${SSO_RETURN_PATH}?${SSO_RETURN_MARKER}=${encodeURIComponent(login)}`);
+    return url.toString();
+  } catch {
+    return ssoUrl;
+  }
+}
+
+// Opened as a small centered popup window (not a plain '_blank' tab) so the
+// auto-close reads as an expected OAuth-style handoff. Requires the "tabs"
+// permission and host access to github.com to read the popup's URL.
+function openSsoPopup(url) {
+  const w = 520, h = 720;
+  const left = Math.round(window.screenX + (window.outerWidth  - w) / 2);
+  const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
+  return new Promise(resolve => {
+    chrome.windows.create(
+      { url, type: 'popup', width: w, height: h, left, top },
+      created => resolve(created?.tabs?.[0]?.id ?? null)
+    );
+  });
+}
+
+// Tracks in-flight SSO popup tabs by login, so a re-click on "Authorize"
+// replaces any stale listener from a previous attempt.
+const ssoTabTrackers = new Map(); // login -> { onUpdated, onRemoved }
+
+function stopSsoTracking(login) {
+  const tracker = ssoTabTrackers.get(login);
+  if (!tracker) return;
+  chrome.tabs.onUpdated.removeListener(tracker.onUpdated);
+  chrome.tabs.onRemoved.removeListener(tracker.onRemoved);
+  ssoTabTrackers.delete(login);
+}
+
+// Closes the popup the instant GitHub redirects it back to our marked
+// return_to URL — an actual completion signal, not a guessed delay. Falls
+// back to onRemoved so a manually-closed or cancelled popup still clears the
+// tracker instead of leaking a listener.
+function trackSsoTab(tabId, login, token) {
+  stopSsoTracking(login);
+
+  const onUpdated = (updatedTabId, changeInfo) => {
+    if (updatedTabId !== tabId || !changeInfo.url) return;
+    if (!changeInfo.url.includes(`${SSO_RETURN_MARKER}=${encodeURIComponent(login)}`)) return;
+    stopSsoTracking(login);
+    window.focus();
+    try { chrome.tabs.remove(tabId); } catch {}
+    checkOrgSsoStatus(token);
+  };
+
+  const onRemoved = removedTabId => {
+    if (removedTabId !== tabId) return;
+    stopSsoTracking(login);
+  };
+
+  chrome.tabs.onUpdated.addListener(onUpdated);
+  chrome.tabs.onRemoved.addListener(onRemoved);
+  ssoTabTrackers.set(login, { onUpdated, onRemoved });
+}
+
 async function authorizeOrgSso(login, cachedUrl, btn) {
-  if (cachedUrl) { window.open(cachedUrl, '_blank'); return; }
   const originalText = btn.textContent;
   btn.disabled    = true;
   btn.textContent = 'Opening…';
   try {
     const { githubToken } = await new Promise(resolve => chrome.storage.sync.get('githubToken', resolve));
-    const fresh = githubToken ? await probeOrgSso(login, githubToken) : null;
-    window.open(fresh?.ssoUrl || 'https://github.com/settings/tokens', '_blank');
+    let url = cachedUrl;
+    if (!url) {
+      const fresh = githubToken ? await probeOrgSso(login, githubToken) : null;
+      url = fresh?.ssoUrl || null;
+    }
+    if (url) {
+      const tabId = await openSsoPopup(buildTrackedSsoUrl(url, login));
+      if (tabId != null && githubToken) trackSsoTab(tabId, login, githubToken);
+    } else {
+      await openSsoPopup(`https://github.com${SSO_RETURN_PATH}`);
+    }
   } catch {
-    window.open('https://github.com/settings/tokens', '_blank');
+    openSsoPopup(`https://github.com${SSO_RETURN_PATH}`);
   } finally {
     btn.disabled    = false;
     btn.textContent = originalText;

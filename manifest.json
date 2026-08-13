@@ -12,8 +12,8 @@
     "512": "icon512.png"
   },
   "author": "Mostly Works Studio",
-  "permissions": ["storage"],
-  "host_permissions": ["https://api.github.com/*"],
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://api.github.com/*", "https://github.com/*"],
   "content_scripts": [{
     "matches": ["*://github.com/*"],
     "js": ["config-defaults.js", "content.js"]
