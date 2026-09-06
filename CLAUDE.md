@@ -49,9 +49,11 @@ Before a message is sent to background, `content.js`:
 3. Shows the input modal if anything needs collecting
 4. Substitutes all `{input:...}` values into the action before dispatch
 
-**Token extraction** (`background.js:extractRows`):
-- `commentBody` tokens scan the comment line-by-line. A line becomes a row when **any** token's regex matches it. Tokens that don't match on a given line fall back to their `default` value; if a token misses and has no `default` set, the whole row is skipped.
-- All other source types (`prTitle`, `prBranch`, etc.) are scalar — resolved once and shared across rows.
+**Token extraction** (`background.js:extractRows`, `resolveTokenValue`):
+- `commentBody` tokens scan the comment line-by-line. A line becomes a row when **any** token's regex matches it directly. Tokens that don't match on a given line walk their `fallbacks` list, in order, via `resolveTokenValue`: `{type:'value', value}` (a literal — empty string doesn't count as resolved), `{type:'pattern', regex}` (retried against the same line), or `{type:'input', label}` (prompts the user — see below). The first rule that resolves wins; if none do, the row is skipped.
+- All other source types (`prTitle`, `prBranch`, etc.) are scalar — resolved once and shared across rows, using the same fallback walk against the raw source value.
+- `token.default` (legacy string field) is still read at runtime as `fallbacks: [{type:'value', value: default}]` via `normalizeFallbacks` — options UI always saves the new `fallbacks` array once a token card is touched.
+- `input` fallbacks are terminal for that token in a given pass: if reached with no answer yet, extraction keeps scanning everything else (to collect every pending prompt in one batch) and `handleAction` returns `{needsInput: true, prompts}` *before* dispatching anything — no rows are trusted until every prompt is answered. `content.js`'s `dispatchActionMessage` shows one modal (title = the fallback's `label`, context = the matched line/source) and resends the same message with `resolvedInputs: {"<lineIndex|scalar>:<tokenName>": value}` attached; background reruns extraction with those answers filled in and dispatches. No speculative/preview fetch — background always does its real fetch first, and this round-trip only happens when that fetch genuinely needs input.
 - `onMultiple: "first"` slices rows to one; `"all"` dispatches for every matched row (with a 1-second delay between dispatches).
 - If a regex has a capture group, group 1 is the value; otherwise the full match is used.
 - `token.skip` — if the extracted value is in this array, the entire row is discarded.
@@ -90,7 +92,11 @@ Key fields in `DEFAULT_CONFIG` (`config-defaults.js`):
           name: '',       // placeholder name used in templates
           source: 'commentBody' | 'commentAuthor' | 'prTitle' | 'prBranch' | 'prNumber' | 'prAuthor' | 'repo',
           regex: '',      // capture group 1 is the value; full match if no groups
-          default: '',    // fallback if no match
+          fallbacks: [    // ordered list, tried in turn when regex misses (legacy `default: ''` string still read as [{type:'value', value: default}])
+            { type: 'value',   value: '' },    // literal fallback; empty string doesn't count as resolved
+            { type: 'pattern', regex: '' },    // alternate regex retried against the same source text
+            { type: 'input',   label: '' },    // prompts the user inline (see Pre-dispatch resolution / needsInput)
+          ],
           skip: [],       // discard row if extracted value is in this list
           replace: { pattern: '', flags: 'g', with: '' }, // or array of these; applied after extraction
         }
@@ -110,6 +116,7 @@ Key fields in `DEFAULT_CONFIG` (`config-defaults.js`):
 - `filter.hideOnStates` — not `hiddenOnStates`
 - `filter.authors` — not `authorFilter`
 - `{input:"Label"}` — user prompt placeholder syntax, not `{ask:"Label"}`
+- `token.fallbacks` — not `token.default` (legacy string still read as a backward-compat synonym, see Token extraction)
 
 ## Stacks
 
@@ -144,10 +151,13 @@ All messages are sent from content script → background via `chrome.runtime.sen
 **`action`** — dispatch a configured action:
 ```js
 // content → background
-{ type: 'action', trigger: 'prHeader'|'comment', repo, prNumber, tokens, action, onMultiple, ... }
+{ type: 'action', trigger: 'prHeader'|'comment', repo, prNumber, tokens, action, onMultiple, resolvedInputs?, ... }
 // background → content (response)
 { success: true|false, count?, commentUrl?, error? }
+// — or, if an `input` fallback needs an answer before anything can dispatch —
+{ needsInput: true, prompts: [{ id, label, context }] }
 ```
+`content.js`'s `dispatchActionMessage` (not a raw `sendMessage`) handles the `needsInput` round-trip transparently: it shows a modal built from `prompts`, then resends the same message with `resolvedInputs: {[id]: value}` merged in. `id` is `"<lineIndex|scalar>:<tokenName>"`.
 
 **`getWorkflowInputs`** — fetch and parse workflow YAML input schema:
 ```js

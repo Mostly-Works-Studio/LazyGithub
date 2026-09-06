@@ -453,6 +453,13 @@
     .replace-list { display: grid; grid-template-columns: 1.5fr 40px 1fr auto; column-gap: 5px; row-gap: 4px; margin-bottom: 5px; align-items: center; }
     .replace-row, .replace-row-header { display: contents; }
 
+    /* ── Fallback-list editor ── */
+    .fallback-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 5px; }
+    .fallback-row { display: flex; gap: 5px; align-items: center; }
+    .fallback-row .field-select { width: 110px; flex: none; }
+    .fallback-field { flex: 1; min-width: 0; }
+    .fallback-field .field-input { width: 100%; box-sizing: border-box; }
+
     /* ── Tag editor ── */
     .tag-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 6px; }
     .tag-row  { display: flex; gap: 5px; align-items: center; }

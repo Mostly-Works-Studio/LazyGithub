@@ -99,9 +99,11 @@ function applyInputValues(action, values) {
   return r;
 }
 
-// Shows a modal dialog collecting values for each label. Returns a Promise that
-// resolves with {label: value} or rejects if the user cancels.
-function showInputModal(labels) {
+// Shows a modal dialog collecting values for each prompt. Each prompt is
+// { id, label, context? } — `context` (e.g. the comment line that triggered
+// an "ask user" fallback) is rendered as a hint under the field. Returns a
+// Promise that resolves with {id: value} or rejects if the user cancels.
+function showInputModal(prompts) {
   return new Promise((resolve, reject) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;';
@@ -115,21 +117,28 @@ function showInputModal(labels) {
     dialog.append(title);
 
     const inputEls = {};
-    for (const label of labels) {
+    for (const prompt of prompts) {
       const group = document.createElement('div');
       group.style.marginBottom = '12px';
       const lbl = document.createElement('label');
-      lbl.textContent = label;
+      lbl.textContent = prompt.label;
       lbl.style.cssText = 'display:block;font-size:12px;font-weight:500;color:#57606a;margin-bottom:4px;';
+      group.append(lbl);
+      if (prompt.context && prompt.context.trim()) {
+        const ctx = document.createElement('div');
+        ctx.textContent = prompt.context.trim();
+        ctx.style.cssText = 'font-size:11px;color:#8c959f;margin-bottom:4px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word;';
+        group.append(ctx);
+      }
       const inp = document.createElement('input');
       inp.type = 'text'; inp.autocomplete = 'off';
       inp.style.cssText = 'width:100%;padding:6px 10px;box-sizing:border-box;border:1px solid #d0d7de;border-radius:6px;font-size:13px;outline:none;';
       inp.addEventListener('focus', () => { inp.style.borderColor = '#0969da'; inp.style.boxShadow = '0 0 0 3px rgba(9,105,218,0.12)'; });
       inp.addEventListener('blur',  () => { inp.style.borderColor = '#d0d7de'; inp.style.boxShadow = 'none'; });
       inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
-      group.append(lbl, inp);
+      group.append(inp);
       dialog.append(group);
-      inputEls[label] = inp;
+      inputEls[prompt.id] = inp;
     }
 
     const btnRow = document.createElement('div');
@@ -144,7 +153,7 @@ function showInputModal(labels) {
     const dismiss = ok => {
       document.removeEventListener('keydown', onKey);
       overlay.remove();
-      if (ok) { const v = {}; for (const [l, el] of Object.entries(inputEls)) v[l] = el.value; resolve(v); }
+      if (ok) { const v = {}; for (const [id, el] of Object.entries(inputEls)) v[id] = el.value; resolve(v); }
       else reject(new Error('cancelled'));
     };
     const confirm = () => dismiss(true);
@@ -159,6 +168,27 @@ function showInputModal(labels) {
     overlay.append(dialog);
     document.body.append(overlay);
     Object.values(inputEls)[0]?.focus();
+  });
+}
+
+// Sends an `action` message to background, transparently handling the
+// needsInput round-trip: if background reports it needs an "ask user"
+// fallback answered, shows one modal (title = the fallback's label, context
+// = the matched line) and resends the same message with resolvedInputs
+// attached. No speculative/preview call — background always does its real
+// fetch first; this only fires when that fetch actually surfaced a gap.
+function dispatchActionMessage(msg, callback) {
+  chrome.runtime.sendMessage(msg, res => {
+    if (chrome.runtime.lastError) { callback({ success: false, error: chrome.runtime.lastError.message }); return; }
+    if (res?.needsInput) {
+      showInputModal(res.prompts).then(values => {
+        dispatchActionMessage({ ...msg, resolvedInputs: { ...(msg.resolvedInputs ?? {}), ...values } }, callback);
+      }).catch(() => {
+        callback({ success: false, error: 'cancelled' });
+      });
+      return;
+    }
+    callback(res);
   });
 }
 
@@ -220,9 +250,12 @@ async function resolveActionForDispatch(action, repo) {
     } catch { /* silently skip if schema fetch fails */ }
   }
 
-  const allLabels = [...inputLabels, ...workflowPrompts.map(p => p.label)];
-  if (allLabels.length) {
-    const values = await showInputModal(allLabels); // throws on cancel
+  const allPrompts = [
+    ...inputLabels.map(l => ({ id: l, label: l })),
+    ...workflowPrompts.map(p => ({ id: p.label, label: p.label })),
+  ];
+  if (allPrompts.length) {
+    const values = await showInputModal(allPrompts); // throws on cancel
     action = applyInputValues(action, values);
     if (workflowPrompts.length) {
       const extra = {};
@@ -821,7 +854,7 @@ function makeStickyPrActionBtn(pr, prAction) {
       applyStyle(prAction.color, 'default', '0.7');
       btn.disabled = true;
 
-      chrome.runtime.sendMessage(
+      dispatchActionMessage(
         { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
         res => {
           if (res?.success) {
@@ -892,7 +925,7 @@ function makePrActionBtn(pr, prAction, sibling) {
         applyStyle(prAction.color, 'white', 'default', '0.7');
         btn.disabled = true;
 
-        chrome.runtime.sendMessage(
+        dispatchActionMessage(
           { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
           res => {
             if (res?.success) {
@@ -951,7 +984,7 @@ function makePrActionBtn(pr, prAction, sibling) {
         btn.style.background = prAction.color;
         btn.disabled         = true;
 
-        chrome.runtime.sendMessage(
+        dispatchActionMessage(
           { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
           res => {
             if (res?.success) {
@@ -1032,7 +1065,7 @@ function makeStickyPrActionsDropdownBtn(pr, visibleActions, { btnLabel, btnColor
       btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
       applyStyle(prAction.color, 'default', '0.7');
       btn.disabled = true;
-      chrome.runtime.sendMessage(
+      dispatchActionMessage(
         { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
         res => {
           btn.disabled = false;
@@ -1096,7 +1129,7 @@ function makePrActionsDropdownBtn(pr, visibleActions, sibling, { btnLabel, btnCo
         btn.innerHTML = feedbackLabel(prAction.feedback, 'pending', {}, PR_FB_DEFAULTS);
         applyStyle(prAction.color, 'white', 'default', '0.7');
         btn.disabled = true;
-        chrome.runtime.sendMessage(
+        dispatchActionMessage(
           { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
           res => {
             btn.disabled = false;
@@ -1141,7 +1174,7 @@ function makePrActionsDropdownBtn(pr, visibleActions, sibling, { btnLabel, btnCo
         btn.className        = 'wd-build-btn wd-loading';
         btn.style.background = prAction.color;
         btn.disabled         = true;
-        chrome.runtime.sendMessage(
+        dispatchActionMessage(
           { type: 'action', trigger: 'prHeader', repo: pr.repo, prNumber: pr.prNumber, action, tokens: prAction.tokens ?? [] },
           res => {
             btn.disabled = false;
@@ -1244,7 +1277,7 @@ function attachCommentClickHandler(btn, link, caConfig) {
       btn.className        = 'wd-btn wd-visible wd-loading';
       btn.style.background = caConfig.color;
 
-      chrome.runtime.sendMessage({ type: 'action', trigger: 'comment', url: link.href, action, tokens: caConfig.tokens ?? [], onMultiple: caConfig.onMultiple ?? 'all' }, res => {
+      dispatchActionMessage({ type: 'action', trigger: 'comment', url: link.href, action, tokens: caConfig.tokens ?? [], onMultiple: caConfig.onMultiple ?? 'all' }, res => {
       if (res?.success) {
         const count      = res.count ?? 1;
         btn.textContent  = feedbackLabel(caConfig.feedback, 'success', { count }, CA_FB_DEFAULTS);
@@ -1340,7 +1373,7 @@ function makeCommentActionsDropdownTrigger(link, caConfigs, { btnLabel, btnColor
       btn.className        = 'wd-btn wd-visible wd-loading';
       btn.style.background = caConfig.color;
 
-      chrome.runtime.sendMessage(
+      dispatchActionMessage(
         { type: 'action', trigger: 'comment', url: link.href, action, tokens: caConfig.tokens ?? [], onMultiple: caConfig.onMultiple ?? 'all' },
         res => {
           if (res?.success) {

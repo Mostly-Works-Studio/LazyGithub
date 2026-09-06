@@ -170,11 +170,16 @@ function getSourceValue(source, prCtx) {
 //
 // For commentBody tokens: scans the comment line by line. A line becomes a
 // candidate row when at least one commentBody token's regex matches it.
-// Tokens that don't match on a given line fall back to their default value.
+// Tokens that don't match on a given line walk their ordered fallback list
+// (see normalizeFallbacks/resolveTokenValue) — a literal value, an alternate
+// pattern retried against the same line, or an "ask user" prompt.
 // Scalar-source tokens are resolved once and shared across all rows.
 //
-// Returns an array of token-value objects (one per matched row, or one for
-// scalar-only cases). An empty array means no rows were found.
+// Returns { rows, pending }. `rows` is an array of token-value objects (one
+// per matched row, or one for scalar-only cases). `pending` is an array of
+// { id, label, context } prompts for any "ask user" fallback that has no
+// answer yet in resolvedInputs — callers should surface these to the user
+// and re-invoke with resolvedInputs filled in before trusting `rows`.
 function applyReplaceSteps(value, replace) {
   if (!replace) return value;
   const steps = Array.isArray(replace) ? replace : [replace];
@@ -184,68 +189,109 @@ function applyReplaceSteps(value, replace) {
   }, value);
 }
 
-function extractRows(tokens, prCtx) {
+// Normalizes a token's fallback chain to FallbackRule[]. Accepts the new
+// `fallbacks` array, or falls back to reading the legacy `default` string
+// as a single literal-value rule (graceful migration, same approach as
+// resolveConditional's old {file} key).
+function normalizeFallbacks(token) {
+  if (Array.isArray(token.fallbacks)) return token.fallbacks;
+  if (token.default) return [{ type: 'value', value: token.default }];
+  return [];
+}
+
+// Resolves a single token's value against sourceText, walking its fallback
+// chain on a miss. Returns one of:
+//   { value, matched: true }   — token.regex (or raw source) matched directly
+//   { value, matched: false }  — resolved via a value/pattern/input fallback
+//   { pending: { id, label, context } } — an "ask user" fallback with no answer yet
+//   { skip: true }             — nothing resolved; caller should drop this row
+function resolveTokenValue(token, sourceText, resolvedInputs, promptIdPrefix) {
+  if (token.regex) {
+    try {
+      const m = sourceText.match(new RegExp(token.regex));
+      if (m !== null) return { value: m[1] ?? m[0], matched: true };
+    } catch { /* fall through to fallbacks */ }
+  } else if (sourceText) {
+    return { value: sourceText, matched: true };
+  }
+
+  for (const fb of normalizeFallbacks(token)) {
+    if (fb.type === 'value') {
+      if (fb.value) return { value: fb.value, matched: false };
+    } else if (fb.type === 'pattern') {
+      try {
+        const m = sourceText.match(new RegExp(fb.regex));
+        if (m !== null) return { value: m[1] ?? m[0], matched: false };
+      } catch { /* try next fallback */ }
+    } else if (fb.type === 'input') {
+      const id = `${promptIdPrefix}:${token.name}`;
+      if (Object.prototype.hasOwnProperty.call(resolvedInputs, id)) {
+        return { value: resolvedInputs[id], matched: false };
+      }
+      return { pending: { id, label: fb.label || token.name, context: sourceText } };
+    }
+  }
+
+  return { skip: true };
+}
+
+function extractRows(tokens, prCtx, resolvedInputs = {}) {
   const commentBodyTokens = tokens.filter(t => t.source === 'commentBody');
   const scalarTokens      = tokens.filter(t => t.source !== 'commentBody');
 
+  const pending = [];
+
   // Resolve scalar tokens once
   const scalarValues = {};
+  let scalarSkip = false;
   for (const token of scalarTokens) {
     const raw = getSourceValue(token.source, prCtx);
-    let value;
-    if (token.regex) {
-      try {
-        const m = raw.match(new RegExp(token.regex));
-        value = m?.[1] ?? m?.[0] ?? (token.default ?? '');
-      } catch { value = token.default ?? ''; }
-    } else {
-      value = raw || (token.default ?? '');
-    }
-    scalarValues[token.name] = applyReplaceSteps(value, token.replace);
+    const resolved = resolveTokenValue(token, raw, resolvedInputs, 'scalar');
+    if (resolved.pending) { pending.push(resolved.pending); continue; }
+    if (resolved.skip) { scalarSkip = true; continue; }
+    scalarValues[token.name] = applyReplaceSteps(resolved.value, token.replace);
   }
 
   // No commentBody tokens → single row from scalar values only
   if (commentBodyTokens.length === 0) {
-    return [scalarValues];
+    if (pending.length > 0) return { rows: [], pending };
+    return { rows: scalarSkip ? [] : [scalarValues], pending: [] };
   }
 
-  // Line-by-line scan: a line becomes a row when at least one token regex matches.
-  // Tokens that don't match on a given line fall back to their default value if one
-  // is configured; otherwise the whole row is skipped.
+  // Line-by-line scan: a line becomes a row when at least one token regex
+  // matches directly. Tokens that miss walk their fallback chain; if that
+  // chain hits an unanswered "ask user" rule, the prompt is collected (scan
+  // continues so every prompt across the whole comment surfaces in one
+  // batch) and the line is retried once resolvedInputs answers arrive.
   // Deduplication is keyed on the full set of extracted values (not a single anchor).
   const rows = [];
   const seen = new Set();
 
-  for (const line of (prCtx.commentBody ?? '').split('\n')) {
-    const cleanLine = line.replace(/<[^>]*>/g, '');
+  const commentLines = (prCtx.commentBody ?? '').split('\n');
+  for (let lineIndex = 0; lineIndex < commentLines.length; lineIndex++) {
+    const cleanLine = commentLines[lineIndex].replace(/<[^>]*>/g, '');
     const row = { ...scalarValues };
     let anyMatched = false;
     let skipRow = false;
+    let linePending = false;
 
     for (const token of commentBodyTokens) {
-      let value;
-      try {
-        const m = cleanLine.match(new RegExp(token.regex));
-        if (m !== null) {
-          value = m[1] ?? m[0];
-          anyMatched = true;
-        } else if (token.default) {
-          value = token.default;
-        } else {
-          skipRow = true;
-          break;
-        }
-      } catch {
-        if (token.default) { value = token.default; }
-        else { skipRow = true; break; }
-      }
+      const resolved = resolveTokenValue(token, cleanLine, resolvedInputs, String(lineIndex));
 
-      value = applyReplaceSteps(value, token.replace);
+      if (resolved.pending) {
+        pending.push(resolved.pending);
+        linePending = true;
+        continue;
+      }
+      if (resolved.skip) { skipRow = true; break; }
+      if (resolved.matched) anyMatched = true;
+
+      const value = applyReplaceSteps(resolved.value, token.replace);
       if ((token.skip ?? []).includes(value)) { skipRow = true; break; }
       row[token.name] = value;
     }
 
-    if (!anyMatched || skipRow) continue;
+    if (linePending || scalarSkip || !anyMatched || skipRow) continue;
 
     const key = commentBodyTokens.map(t => row[t.name]).join('\x00');
     if (seen.has(key)) continue;
@@ -253,7 +299,7 @@ function extractRows(tokens, prCtx) {
     rows.push(row);
   }
 
-  return rows;
+  return { rows, pending };
 }
 
 // ── Unified Action Executor ───────────────────────────────────────────────────
@@ -349,7 +395,12 @@ async function handleAction(msg, token) {
     const defaultBranch = repoResult.status === 'fulfilled' ? repoResult.value.default_branch : 'master';
 
     const prCtx     = { commentBody, commentAuthor, prTitle, branchName, prNumber, prAuthor, repo };
-    const rows      = extractRows(tokens, prCtx);
+    const { rows, pending } = extractRows(tokens, prCtx, msg.resolvedInputs ?? {});
+
+    if (pending.length > 0) {
+      return { needsInput: true, prompts: pending };
+    }
+
     const activeRows = onMultiple === 'first' ? rows.slice(0, 1) : rows;
 
     if (activeRows.length === 0) {
@@ -397,7 +448,12 @@ async function handleAction(msg, token) {
       commentAuthor: '',
     };
 
-    const rows        = extractRows(msg.tokens ?? [], prCtx);
+    const { rows, pending } = extractRows(msg.tokens ?? [], prCtx, msg.resolvedInputs ?? {});
+
+    if (pending.length > 0) {
+      return { needsInput: true, prompts: pending };
+    }
+
     const tokenValues = rows[0] ?? {};
     const ctx         = { ...prCtx, ...tokenValues };
 

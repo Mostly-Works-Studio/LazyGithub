@@ -799,6 +799,87 @@ function populateReplaceList(listEl, arr) {
   for (const s of steps) listEl.appendChild(makeReplaceRow(s));
 }
 
+// ── Fallback-list helpers ─────────────────────────────────────────────────────
+// A token's fallback chain is tried in order when its pattern misses:
+//   value   — use this literal string
+//   pattern — retry an alternate regex against the same source text
+//   input   — prompt the user inline (shown with the offending line as context)
+
+const FALLBACK_TYPES = [
+  { value: 'value',   label: 'Value'    },
+  { value: 'pattern', label: 'Pattern'  },
+  { value: 'input',   label: 'Ask User' },
+];
+
+function makeFallbackRow(fb = {}) {
+  const row = mkDiv('fallback-row');
+  const handle = mkEl('span', 'drag-handle', '⠿'); handle.draggable = true;
+
+  const typeSel = document.createElement('select');
+  typeSel.className = 'field-select';
+  for (const t of FALLBACK_TYPES) {
+    const opt = document.createElement('option');
+    opt.value = t.value; opt.textContent = t.label;
+    typeSel.append(opt);
+  }
+  typeSel.value = fb.type || 'value';
+
+  const valueInput   = mkInput(fb.value ?? '', false, 'literal fallback value');
+  const patternInput = mkInput(fb.regex ?? '', true,  'alternate \\d+ pattern');
+  const labelInput   = mkInput(fb.label ?? '', false, 'Prompt shown to user, e.g. "Rollout %?"');
+
+  const fieldWrap = mkDiv('fallback-field');
+  const syncField = () => {
+    fieldWrap.innerHTML = '';
+    if (typeSel.value === 'value')   fieldWrap.append(valueInput);
+    else if (typeSel.value === 'pattern') fieldWrap.append(patternInput);
+    else fieldWrap.append(labelInput);
+  };
+  typeSel.addEventListener('change', syncField);
+  syncField();
+
+  const rm = mkSmallBtn('×', 'btn btn-danger btn-xs', () => row.remove());
+  row.append(handle, typeSel, fieldWrap, rm);
+
+  row._read = () => {
+    const type = typeSel.value;
+    if (type === 'value')   return valueInput.value.trim()   ? { type: 'value',   value: valueInput.value.trim() } : null;
+    if (type === 'pattern') return patternInput.value.trim() ? { type: 'pattern', regex: patternInput.value.trim() } : null;
+    if (type === 'input')   return { type: 'input', label: labelInput.value.trim() };
+    return null;
+  };
+  return row;
+}
+
+function readFallbackList(listEl) {
+  return [...listEl.querySelectorAll('.fallback-row')].map(r => r._read()).filter(Boolean);
+}
+
+// Accepts either the new `fallbacks` array or the legacy `default` string
+// (read as a single implicit value rule) for backward compat with saved configs.
+function populateFallbackList(listEl, token) {
+  listEl.innerHTML = '';
+  const fallbacks = Array.isArray(token.fallbacks)
+    ? token.fallbacks
+    : (token.default ? [{ type: 'value', value: token.default }] : []);
+  for (const fb of fallbacks) listEl.appendChild(makeFallbackRow(fb));
+}
+
+function makeFallbackListBlock(token) {
+  const list = mkDiv('fallback-list');
+  populateFallbackList(list, token);
+  enableDragSort(list, '.fallback-row');
+  const addBtn = mkSmallBtn('+ Add fallback', 'btn btn-secondary btn-xs',
+    () => list.append(makeFallbackRow({ type: 'value' })));
+  const note = mkEl('p', 'sub-note', '');
+  note.innerHTML = 'Tried in order when the pattern finds no match (or the source is empty): <b>Value</b> uses a literal, <b>Pattern</b> retries an alternate regex against the same source, <b>Ask User</b> prompts you inline — with the offending line shown as context — before the action dispatches. If nothing resolves, the row is skipped.';
+
+  const wrap = mkDiv('');
+  wrap.append(list, addBtn, note);
+  wrap._read = () => readFallbackList(list);
+  return wrap;
+}
+
 
 // Enables drag-to-reorder on direct children of listEl matching itemSelector.
 // Dragging must start on a .drag-handle element inside the item.
@@ -1169,7 +1250,7 @@ function makeTokenCard(token, { allowCommentSources = true, expanded = false } =
   const sourceSel    = buildSourceSelect(token.source ?? (allowCommentSources ? 'commentBody' : 'prTitle'), allowCommentSources);
   const regexInput   = mkInput(token.regex   ?? '', true,  'optional pattern');
   const regexNote    = mkEl('p', 'sub-note', 'Optional — capture group 1 is the value. If absent, the full source value is used.');
-  const defaultInput = mkInput(token.default ?? '', false, '');
+  const fallbackBlock = makeFallbackListBlock(token);
   const skipList  = mkDiv('tag-list');
   populateTagList(skipList, token.skip);
   const skipAdd   = mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => skipList.append(makeTagRow('')));
@@ -1188,7 +1269,7 @@ function makeTokenCard(token, { allowCommentSources = true, expanded = false } =
 
   const addBody = mkDiv('feedback-section-body');
   addBody.append(
-    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
+    cardRowTop(fieldLabelEl('Fallbacks', 'Ordered list of fallbacks tried when the pattern finds no match or the source is empty'), fallbackBlock),
     cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
     cardRowTop(fieldLabelEl('Transform', 'Chain of regex replace steps applied to the extracted value in order — pattern, flags, replacement'), replaceWrap),
   );
@@ -1209,13 +1290,14 @@ function makeTokenCard(token, { allowCommentSources = true, expanded = false } =
   card.append(body);
 
   card._read = () => {
-    const replace = readReplaceList(replaceList);
+    const replace   = readReplaceList(replaceList);
+    const fallbacks = fallbackBlock._read();
     return {
-      name:    nameInput.value.trim(),
-      source:  sourceSel.value,
-      regex:   regexInput.value.trim(),
-      default: defaultInput.value.trim(),
-      skip:    readTagList(skipList),
+      name:      nameInput.value.trim(),
+      source:    sourceSel.value,
+      regex:     regexInput.value.trim(),
+      fallbacks,
+      skip:      readTagList(skipList),
       ...(replace.length ? { replace } : {}),
     };
   };
@@ -1242,7 +1324,7 @@ function makeTokenPresetCard(preset, { expanded = false } = {}) {
   const regexInput = mkInput(preset.regex   ?? '', true,  '\\d{12}-...');
   regexInput.dataset.field = 'regex';
   const regexNote  = mkEl('p', 'sub-note', 'Optional — capture group 1 is the value. If absent, the full source is used.');
-  const defaultInput = mkInput(preset.default ?? '', false, '');
+  const fallbackBlock = makeFallbackListBlock(preset);
   const skipList   = mkDiv('tag-list');
   populateTagList(skipList, preset.skip);
   const skipAdd  = mkSmallBtn('+ Add', 'btn btn-secondary btn-xs', () => skipList.append(makeTagRow('')));
@@ -1261,7 +1343,7 @@ function makeTokenPresetCard(preset, { expanded = false } = {}) {
 
   const addBody = mkDiv('feedback-section-body');
   addBody.append(
-    cardRow(fieldLabelEl('Fallback value', 'Value to use when the pattern finds no match or the source is empty'), defaultInput),
+    cardRowTop(fieldLabelEl('Fallbacks', 'Ordered list of fallbacks tried when the pattern finds no match or the source is empty'), fallbackBlock),
     cardRowTop(fieldLabelEl('Skip if value is', 'Skip this row entirely if the extracted value matches any of these — useful for filtering out known noise values'), skipWrap),
     cardRowTop(fieldLabelEl('Transform', 'Chain of regex replace steps applied to the extracted value in order — pattern, flags, replacement'), replaceWrap),
   );
@@ -1282,14 +1364,15 @@ function makeTokenPresetCard(preset, { expanded = false } = {}) {
   card.append(body);
 
   card._read = () => {
-    const replace = readReplaceList(replaceList);
+    const replace   = readReplaceList(replaceList);
+    const fallbacks = fallbackBlock._read();
     return {
-      id:      idInput.value.trim(),
-      label:   name.value.trim(),
-      source:  sourceSel.value,
-      regex:   regexInput.value.trim(),
-      default: defaultInput.value.trim(),
-      skip:    readTagList(skipList),
+      id:        idInput.value.trim(),
+      label:     name.value.trim(),
+      source:    sourceSel.value,
+      regex:     regexInput.value.trim(),
+      fallbacks,
+      skip:      readTagList(skipList),
       ...(replace.length ? { replace } : {}),
     };
   };
@@ -1343,7 +1426,7 @@ function makeAddTokenSelect(tokenList, allowCommentSources) {
       const presets  = [...tokenPresetsList.querySelectorAll(':scope > .deploy-card')].map(c => c._read());
       const preset   = presets.find(p => p.id === presetId);
       if (preset) {
-        tokenData = { name: preset.id, source: preset.source, regex: preset.regex, default: preset.default, skip: preset.skip };
+        tokenData = { name: preset.id, source: preset.source, regex: preset.regex, fallbacks: preset.fallbacks, skip: preset.skip };
       }
     }
 
@@ -1634,7 +1717,7 @@ function makeActionCard(action, { fixedTrigger = null, expanded = false } = {}) 
   const varField = cfield('Variables', 'Extract named values from PR context and use them as {placeholders} in the action fields below');
   varField.append(tokenList, addTokenSel);
   if (allowCommentSources) {
-    const matchNote = mkEl('p', 'sub-note', 'For comment actions: each line where at least one variable\'s pattern matches creates a separate action invocation. Variables whose pattern doesn\'t match on that line use their fallback value\nPlease note: If a variable has no fallback set, the line is skipped entirely.');
+    const matchNote = mkEl('p', 'sub-note', 'For comment actions: each line where at least one variable\'s pattern matches creates a separate action invocation. Variables whose pattern doesn\'t match on that line walk their fallback list in order — a literal value, an alternate pattern retried on the same line, or an inline prompt to the user.\nPlease note: If nothing in a variable\'s fallback list resolves, the line is skipped entirely.');
     varField.append(matchNote);
   }
 

@@ -75,7 +75,12 @@ Applies to all repos unless overridden by a group or repo entry. In the settings
   // id: the {placeholder} name used in action inputs.
   // source: commentBody | commentAuthor | prTitle | prBranch | prNumber | prAuthor | repo
   // regex: optional — capture group 1 is the value; if absent, the full source is used.
-  // default: fallback if no match. skip: discard the row if the extracted value is in this list.
+  // fallbacks: ordered list of rules tried when the pattern finds no match. Each rule is one of:
+  //   { type: "value", value: "..." }    — use this literal
+  //   { type: "pattern", regex: "..." }  — retry an alternate regex against the same source
+  //   { type: "input", label: "..." }    — prompt the user inline before dispatching
+  // First rule that resolves wins; if none do, the row is skipped. (legacy `default: "..."` is
+  // still read as a single implicit value rule.) skip: discard the row if the extracted value is in this list.
   // replace: optional — one or more regex replace steps applied after extraction (see Transform steps).
   "tokenPresets": [],
 
@@ -103,8 +108,9 @@ Applies to all repos unless overridden by a group or repo entry. In the settings
 
   // Buttons next to matching strings in PR comments.
   // Row extraction: each comment line where at least one commentBody token's pattern matches becomes a row.
-  // Tokens whose pattern doesn't match on a given line fall back to their default value for that row.
-  // If a token misses its pattern and has no default set, the entire row is skipped.
+  // Tokens whose pattern doesn't match on a given line walk their `fallbacks` list in order for that row —
+  // a literal value, an alternate pattern retried on the same line, or an inline prompt to the user.
+  // If nothing in a token's fallback list resolves, the entire row is skipped.
   // onMultiple: "all" — trigger the action for each matching row; "first" — trigger only for the first match.
   // filter.authors: show only on comments from matching usernames or regexes; empty = all authors.
   "commentActions": [
@@ -117,7 +123,7 @@ Applies to all repos unless overridden by a group or repo entry. In the settings
           "name": "version",
           "source": "commentBody",
           "regex": "\\d{12}-(?:PR\\d+-[a-f0-9]+|\\d+)",
-          "default": "",
+          "fallbacks": [],
           "skip": []
         }
       ],
@@ -173,7 +179,7 @@ When you enable an override for the first time, the form auto-fills from the res
         {
           "label": "Deploy JS",
           "color": "#8250df",
-          "tokens": [{ "name": "version", "source": "commentBody", "regex": "\\d+\\.\\d+\\.\\d+", "default": "", "skip": [] }],
+          "tokens": [{ "name": "version", "source": "commentBody", "regex": "\\d+\\.\\d+\\.\\d+", "fallbacks": [], "skip": [] }],
           "onMultiple": "all",
           "action": { "type": "workflow", "file": "deploy_js.yaml", "inputs": { "version": "{version}" } }
         }
