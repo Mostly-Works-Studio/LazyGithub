@@ -1,2 +1,5 @@
 .DS_Store
 .idea
+# GitHub UI canary (.github/ui-check)
+node_modules/
+ui-check-output/

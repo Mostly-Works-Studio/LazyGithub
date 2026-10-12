@@ -11,7 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Setup
 
-There is no build step, no bundler, and no test suite. The extension is plain JavaScript.
+There is no build step, no bundler, and no unit test suite. The extension is plain JavaScript.
+
+The one automated check is the **GitHub UI compatibility canary** (`.github/workflows/github-ui-check.yml`, script in `.github/ui-check/check-github-ui.mjs`). Every 6 hours, and on any change to `content.js`, it loads real PR pages in headless Chrome and asserts that every GitHub selector `content.js` depends on still resolves. Failures open an issue labelled `github-ui-break`. The `CONTRACT` array in the script is cross-checked against `content.js`: if you add, remove, or rename a `querySelector` for GitHub markup in `content.js`, update `CONTRACT` in the same commit or the job fails with a drift error. Run it locally with `cd .github/ui-check && npm ci && npx puppeteer browsers install chrome && node check-github-ui.mjs`.
 
 To load for development:
 1. Open `chrome://extensions` in Chrome

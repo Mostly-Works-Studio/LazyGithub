@@ -1,0 +1,151 @@
+# GitHub UI compatibility canary
+#
+# LazyGitHub injects buttons by querying github.com's PR page DOM (see content.js).
+# GitHub ships UI changes without notice, so this job loads real PR pages in headless
+# Chrome several times a day and fails when a selector content.js depends on stops
+# resolving. Failures open (or update) an issue labelled `github-ui-break`; the next
+# passing run closes it.
+#
+# The selector list lives in .github/ui-check/check-github-ui.mjs (CONTRACT) and is
+# cross-checked against content.js, so adding a selector to one without the other fails
+# the job too.
+#
+# Limitation: pages are loaded anonymously, so this sees the logged-out UI variant.
+# GitHub occasionally A/B-tests markup for signed-in users that this canary cannot see.
+
+name: GitHub UI compatibility check
+
+on:
+  schedule:
+    # Every 6 hours, offset from the top of the hour to avoid GitHub's busiest cron slots.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      pr_urls:
+        description: 'Optional comma-separated PR URLs to check instead of auto-discovered ones'
+        required: false
+        default: ''
+  push:
+    branches: [master]
+    paths:
+      - content.js
+      - .github/ui-check/**
+      - .github/workflows/github-ui-check.yml
+  pull_request:
+    paths:
+      - content.js
+      - .github/ui-check/**
+      - .github/workflows/github-ui-check.yml
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: github-ui-check-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Verify content.js selectors against live GitHub
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: .github/ui-check
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .github/ui-check/package-lock.json
+
+      - name: Cache Puppeteer browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('.github/ui-check/package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Explicit so the check does not depend on npm running puppeteer's postinstall
+      # script (newer npm versions block dependency install scripts by default).
+      - name: Install Chrome for Puppeteer
+        run: npx puppeteer browsers install chrome
+
+      - name: Run UI compatibility check
+        id: check
+        run: node check-github-ui.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UI_CHECK_PR_URLS: ${{ inputs.pr_urls }}
+          UI_CHECK_OUT_DIR: ${{ github.workspace }}/ui-check-output
+
+      - name: Upload report, screenshots and HTML dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-ui-check-${{ github.run_id }}
+          path: ui-check-output/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Open, update or close the tracking issue
+        # PRs from forks have a read-only token, and PR checks already surface failures inline.
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const LABEL   = 'github-ui-break';
+            const TITLE   = 'GitHub UI change broke LazyGitHub selectors';
+            const outcome = process.env.CHECK_OUTCOME;
+            const runUrl  = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let report = '';
+            try { report = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/ui-check-output/report.md`, 'utf8'); }
+            catch { report = '_No report was produced — the check crashed before writing one. See the run log._'; }
+            if (report.length > 60000) report = report.slice(0, 60000) + '\n\n_…truncated, full report in the run artifacts._';
+
+            try {
+              await github.rest.issues.getLabel({ ...context.repo, name: LABEL });
+            } catch {
+              await github.rest.issues.createLabel({
+                ...context.repo, name: LABEL, color: 'B60205',
+                description: 'A GitHub UI change broke a selector content.js depends on',
+              });
+            }
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo, labels: LABEL, state: 'open', per_page: 10,
+            });
+            const existing = open.find(i => !i.pull_request);
+
+            if (outcome === 'failure') {
+              const body = `${report}\n\n---\nWorkflow run: ${runUrl}\nTriggered by: \`${context.eventName}\``;
+              if (existing) {
+                await github.rest.issues.createComment({ ...context.repo, issue_number: existing.number, body: `Still failing.\n\n${body}` });
+                core.notice(`Updated tracking issue #${existing.number}`);
+              } else {
+                const { data: issue } = await github.rest.issues.create({
+                  ...context.repo, title: TITLE, labels: [LABEL],
+                  body: `The scheduled GitHub UI compatibility check found that github.com no longer renders markup that \`content.js\` relies on. Until this is fixed, users may see missing buttons or broken state/author filters.\n\n${body}`,
+                });
+                core.notice(`Opened tracking issue #${issue.number}`);
+              }
+            } else if (outcome === 'success' && existing) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: existing.number,
+                body: `The check is passing again as of ${runUrl} — closing. Reopen if the fix was a GitHub-side rollback rather than a change here.`,
+              });
+              await github.rest.issues.update({ ...context.repo, issue_number: existing.number, state: 'closed', state_reason: 'completed' });
+              core.notice(`Closed tracking issue #${existing.number}`);
+            }

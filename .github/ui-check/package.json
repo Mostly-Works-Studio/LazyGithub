@@ -1,0 +1,13 @@
+{
+  "name": "lazygithub-ui-check",
+  "private": true,
+  "description": "Scheduled canary that verifies GitHub's PR page DOM still exposes every selector content.js depends on.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "check": "node check-github-ui.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "25.13.0"
+  }
+}

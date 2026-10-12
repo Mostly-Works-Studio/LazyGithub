@@ -878,9 +878,6 @@ function makeStickyPrActionBtn(pr, prAction) {
     })();
   });
 
-  btn.addEventListener('mouseenter', () => { if (!btn.disabled && !TOKEN_CONFIGURED) btn.innerHTML = 'Setup'; });
-  btn.addEventListener('mouseleave', () => { if (!btn.disabled) btn.innerHTML = TOKEN_CONFIGURED ? prAction.label : 'Setup'; });
-
   return btn;
 }
 
@@ -949,21 +946,12 @@ function makePrActionBtn(pr, prAction, sibling) {
       })();
     });
 
-    btn.addEventListener('mouseenter', () => { if (!btn.disabled && !TOKEN_CONFIGURED) btn.innerHTML = 'Setup'; });
-    btn.addEventListener('mouseleave', () => { if (!btn.disabled) btn.innerHTML = TOKEN_CONFIGURED ? prAction.label : 'Setup'; });
   } else {
     btn.className        = 'wd-build-btn';
     btn.style.background = prAction.color;
 
-    btn.addEventListener('mouseenter', () => {
-      if (btn.disabled) return;
-      if (!TOKEN_CONFIGURED) btn.innerHTML = 'Setup';
-      else btn.style.filter = 'brightness(0.85)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.filter = '';
-      if (!btn.disabled) btn.innerHTML = prAction.label;
-    });
+    btn.addEventListener('mouseenter', () => { if (!btn.disabled) btn.style.filter = 'brightness(0.85)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.filter = ''; });
 
     btn.addEventListener('click', () => {
       if (!TOKEN_CONFIGURED) {
@@ -1211,12 +1199,6 @@ function createCommentActionBtn({ label, color }) {
   btn.dataset.label    = label;
   btn.title            = label;
   btn.style.background = color;
-  btn.addEventListener('mouseenter', () => {
-    if (!TOKEN_CONFIGURED) btn.textContent = 'Setup';
-  });
-  btn.addEventListener('mouseleave', () => {
-    btn.textContent = btn.dataset.label;
-  });
   return btn;
 }
 
