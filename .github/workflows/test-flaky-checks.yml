@@ -4,7 +4,7 @@
 # reliably shows red checks in the merge box for exercising LazyGitHub's retry icon.
 # Retrying a failed job gives it a fresh roll of the dice, so retries sometimes pass.
 #
-# Runs only for PRs that touch this file, so it never fires on real PRs.
+# Runs only for PRs that touch this file, so it never fires on real PRs. 
 
 name: Flaky checks (test fixture)
 
