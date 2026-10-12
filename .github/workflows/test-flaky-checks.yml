@@ -1,0 +1,46 @@
+# TEST FIXTURE — do not merge.
+#
+# Three checks that each fail at random (~2 in 3 runs), so a PR from this branch
+# reliably shows red checks in the merge box for exercising LazyGitHub's retry icon.
+# Retrying a failed job gives it a fresh roll of the dice, so retries sometimes pass.
+#
+# Runs only for PRs that touch this file, so it never fires on real PRs.
+
+name: Flaky checks (test fixture)
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/test-flaky-checks.yml
+  workflow_dispatch:
+
+jobs:
+  flaky-a:
+    name: Flaky check A
+    runs-on: ubuntu-latest
+    steps:
+      - name: Roll the dice (fails ~66%)
+        run: |
+          roll=$((RANDOM % 3))
+          echo "roll=$roll (0 passes, 1-2 fail)"
+          [ "$roll" -eq 0 ] || { echo "::error::Flaky check A failed on purpose (roll=$roll)"; exit 1; }
+
+  flaky-b:
+    name: Flaky check B
+    runs-on: ubuntu-latest
+    steps:
+      - name: Roll the dice (fails ~66%)
+        run: |
+          roll=$((RANDOM % 3))
+          echo "roll=$roll (0 passes, 1-2 fail)"
+          [ "$roll" -eq 0 ] || { echo "::error::Flaky check B failed on purpose (roll=$roll)"; exit 1; }
+
+  flaky-c:
+    name: Flaky check C
+    runs-on: ubuntu-latest
+    steps:
+      - name: Roll the dice (fails ~66%)
+        run: |
+          roll=$((RANDOM % 3))
+          echo "roll=$roll (0 passes, 1-2 fail)"
+          [ "$roll" -eq 0 ] || { echo "::error::Flaky check C failed on purpose (roll=$roll)"; exit 1; }
