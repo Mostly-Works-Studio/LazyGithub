@@ -983,6 +983,37 @@
                 </div>
               </div>
 
+              <!-- Retry buttons -->
+              <div class="form-section collapsible collapsed" style="margin-top: 12px;" id="retry-buttons-section">
+                <div class="form-section-header">
+                  <div style="display:flex; align-items:center; gap:6px; flex:1;">
+                    <span class="form-section-chevron">▾</span>
+                    Retry buttons
+                  </div>
+                  <label class="switch" title="Show retry icons on failed checks and runs" onclick="event.stopPropagation()">
+                    <input type="checkbox" id="show-retry-buttons" checked>
+                    <span class="switch-track"></span>
+                    <span class="switch-thumb"></span>
+                  </label>
+                </div>
+                <div class="form-section-body">
+                  <div class="field-row">
+                    <span class="field-label">On retry</span>
+                    <div class="segmented" style="width:fit-content;">
+                      <label><input type="radio" name="retry-mode" value="failed" checked><span>Re-run failed jobs only</span></label>
+                      <label><input type="radio" name="retry-mode" value="all"><span>Re-run the whole workflow</span></label>
+                    </div>
+                  </div>
+                  <p class="sub-note" style="margin:0; padding: 8px 15px 12px;">
+                    Adds a retry icon next to each failed GitHub Actions check in the PR merge box (plus one in the
+                    <strong>Checks</strong> header that re-runs all of them) and next to each failed run in a repository's
+                    <strong>Actions</strong> list. After a re-run is accepted the page reloads as soon as GitHub shows the new attempt.
+                    Only GitHub Actions checks can be retried; external CI statuses are left alone.
+                    Your token needs the <code>repo</code> scope (classic) or <code>actions: write</code> (fine-grained).
+                  </p>
+                </div>
+              </div>
+
               <!-- Extraction Patterns -->
               <div class="form-section" style="margin-top: 12px;">
                 <div class="form-section-header">

@@ -28,7 +28,7 @@ LazyGitHub is a Chrome MV3 extension with three JavaScript execution contexts, e
 
 **`background.js`** — Service worker. The only context that makes GitHub API calls. Handles all four action types (`comment`, `workflow`, `repositoryDispatch`, `deployment`). Receives messages from the content script via `chrome.runtime.onMessage`. Uses `importScripts('config-defaults.js')` to load the default config.
 
-**`content.js`** — Injected into every `github.com` page. Detects PR pages via URL pattern and `MutationObserver` (GitHub is an SPA). Resolves the layered config client-side (`resolveConfig`), injects buttons into the DOM, handles the `{input:"Label"}` prompt modal via `resolveActionForDispatch`, and sends `{type: 'action'}` messages to the background worker. Loaded alongside `config-defaults.js` per `manifest.json`.
+**`content.js`** — Injected into every `github.com` page. Detects PR pages via URL pattern and `MutationObserver` (GitHub is an SPA). The observer watches `document.documentElement`, not `body`, because GitHub's Turbo navigation swaps the `<body>` element wholesale (e.g. PR page → Actions tab); `scan()` also runs on `turbo:load` / `turbo:render` / `popstate` and re-attaches the injected `<style>` and the `wd-token-missing` body class if the swap dropped them. Resolves the layered config client-side (`resolveConfig`), injects buttons into the DOM, handles the `{input:"Label"}` prompt modal via `resolveActionForDispatch`, and sends `{type: 'action'}` messages to the background worker. Loaded alongside `config-defaults.js` per `manifest.json`.
 
 **`options.js` / `onboarding.js`** — Settings and first-run pages. `options.js` is the bulk of the UI: tabbed editor (Global / Groups / Repos), card builders for each action type, stack management, drag-to-reorder, JSON import/export, save/discard/reset. `onboarding.js` handles the first-run token setup with inline GitHub API validation.
 
@@ -80,6 +80,8 @@ Key fields in `DEFAULT_CONFIG` (`config-defaults.js`):
   prInfoBoxShowAuthor:      true,   // show PR author row
   prInfoBoxShowHead:        true,   // show head branch row
   prInfoBoxShowBase:        true,   // show base branch row (with refresh button)
+  showRetryButtons:         true,   // retry icon on failed checks (PR merge box) and failed runs (Actions list)
+  retryMode:                'failed', // 'failed' re-runs only failed jobs | 'all' re-runs the whole workflow run
   prDropdownThreshold: 3,
   commentDropdownThreshold: 4,
   actions: [              // all actions in one array; trigger field distinguishes PR vs comment
@@ -120,6 +122,28 @@ Key fields in `DEFAULT_CONFIG` (`config-defaults.js`):
 - `{input:"Label"}` — user prompt placeholder syntax, not `{ask:"Label"}`
 - `token.fallbacks` — not `token.default` (legacy string still read as a backward-compat synonym, see Token extraction)
 
+## Retry Buttons
+
+`content.js:injectRetryButtons` (called from `scan()`) adds a retry icon button on two surfaces when `CONFIG.showRetryButtons` is on and a token is configured:
+
+| Page | Anchor it keys on | Placement | Lookup message | Retry message (`retryMode` failed / all) |
+|---|---|---|---|---|
+| PR conversation page (merge box rows) | `[class*="StatusCheckRow-module__title__"]` rows, matched to API checks by displayed name `"<workflow> / <job> (<event>)"` (`matchCheckByDisplayName`; the API lookup attaches `workflowName` + `event` per run) | appended inside the row heading `[class*="StatusCheckRow-module__titleHeader__"]` (`.wd-retry-inline`) | `getFailedChecks` (PR head SHA → `/commits/{sha}/check-runs`) | `rerunJob` / `rerunRun` |
+| PR page, any link carrying a check-run id (`?check_run_id=N`, `/actions/runs/R/job/N`, legacy `/runs/N`) | matched by id | right after the last link for that check | same data | same |
+| PR merge box header ("retry all") | `section[aria-label="Checks"]` → `button[aria-label="Collapse checks" or "Expand checks"]` | before the chevron that follows the toggle (`z-index` above GitHub's overlay button) | same `getFailedChecks` data | `rerunRuns` with every distinct `runId` |
+| `/actions`, `/actions/workflows/<file>` | `a[href*="/actions/runs/"]` run links | last child of the link (`.wd-retry-inline`), hugging the end of the title: the title span gets `width:auto !important` and `min-width: min(<text width>px, calc(100% - 72px))` so short titles stay natural and long ones still truncate without growing the table cell; the button cancels the link's click | `getRunStatuses` (one list call + capped per-run fallback) | `rerunFailedJobs` / `rerunRun` |
+
+Deliberately **not** covered: run detail pages and the PR `/checks` tab, where GitHub ships its own Re-run controls.
+
+Design rules:
+- **The DOM only supplies ids or names; the API decides what is failed.** Never read status icons. The current merge box renders check rows with no link (the details link lives inside the row's "…" menu), so those rows are matched by text; the fetch is triggered whenever `section[aria-label="Checks"]`, a row, or a check link is present. For GitHub Actions, a check-run id *is* the job id (`RETRYABLE_CONCLUSIONS` in `background.js` = failure / timed_out / cancelled; only `app.slug === 'github-actions'` checks qualify).
+- **One cached lookup per page** (`retryState`, `RETRY_CACHE_TTL` = 30 s). The run-list key is per repo, so `injectRunListRetryButtons` forces a refetch when any run on screen is missing from the cached statuses (SPA navigation between "All workflows" and a per-workflow list, live-inserted runs). `withRetryData` allows one request in flight; because GitHub navigates without reloading, the response may land on a different page than the one that asked, so the callback always ends with another `injectRetryButtons()` pass for whatever page is current (otherwise the Actions list stays empty after PR → Actions navigation until a reload). `retryNeedsWork` decides whether a scan needs to (re)process anchors: different page key, stale cache, or anchors without the current `data-wd-retry-stamp`. A successful retry does **not** reset the cache: the page reloads once the re-run registers, and an early refetch would remove the tick from under the user.
+- Buttons are icon-only everywhere (the merge-box header one adds `.wd-retry-all` for a bordered look and a z-index above GitHub's overlay; id `pr-all`): `button.wd-retry-btn[data-wd-retry-id="job-<id>|run-<id>|pr-all"]` holding an inline octicon (`RETRY_ICONS`), unique per id on the page (`findRetryBtn` / `placeRetryBtn` are global by id). States: `.wd-loading` (icon spins), `.wd-success` (green tick), `.wd-failure` (red x, reverts after 3 s). The tooltip carries the label.
+- **Reload after success is API-gated.** GitHub's live status lags its API, so `reloadWhenRetryRegistered` polls every `RETRY_POLL_INTERVAL` via the surface's `isRegistered` poller (`prChecksRegistered`: the old failed check-run ids are gone from latest check runs; `runRegistered`: run status is no longer `completed`) and reloads on the first positive answer, or after `RETRY_POLL_TIMEOUT` regardless.
+- `teardownInjectedButtons` removes `.wd-retry-btn` and clears `data-wd-retry-stamp`.
+- The merge-box section selectors are signed-in-only; the canary lists them with `pages: []` so the drift check tracks them even though it can't evaluate them anonymously.
+- `init` resolves `CONFIG` with `parseRepoFromUrl()` so repo/group overrides apply on Actions pages too, not just PRs.
+
 ## Stacks
 
 Stacks group actions under a shared dropdown button. Defined globally in `config.stacks` as `[{ id, label, color }]`. Each action holds an array of stack IDs it belongs to (`action.stacks`). The options page fires a `stack-card-sync` CustomEvent on `document` whenever a stack's name or colour changes, so chips in action cards update in real time.
@@ -139,6 +163,7 @@ Injected elements in `content.js` use a `wd-` CSS class prefix:
 - `.wd-btn` — base class for all action buttons (comment action buttons)
 - `.wd-build-btn` — PR header action buttons (always visible, inline in the PR header)
 - `.wd-visible`, `.wd-loading`, `.wd-success`, `.wd-failure` — state classes applied to buttons
+- `.wd-retry-btn` — retry icon buttons next to failed checks / runs (see Retry Buttons); anchors they were resolved against carry `data-wd-retry-stamp`
 
 **PR Info Box** (`#wd-info-box`) — a fixed floating card in the bottom-right corner injected by `injectInfoBox()`. It slides in with a spring animation on first render and collapses off-screen to show only the 16px side-tab when dismissed. Collapsed state persists in `localStorage` under `wd-info-box-collapsed`. The card shows up to 4 rows (repo, author, head branch, base branch) controlled by the `prInfoBoxShow*` config flags. The base branch row includes a refresh button that calls `refreshPrBase` to re-PATCH the PR base and resolve stale diffs. Extension assets (e.g. `icon16.png`) used inside content scripts must be listed in `web_accessible_resources` in `manifest.json`.
 
@@ -182,6 +207,16 @@ All messages are sent from content script → background via `chrome.runtime.sen
 { repo, repoUrl, headRef, headUrl, baseRef, baseUrl, author, authorUrl } | null
 ```
 
+**Retry lookups and commands** (all `{ success, ... } | { success: false, error }`; handled by `RETRY_HANDLERS` in `background.js`):
+```js
+{ type: 'getFailedChecks', repo, prNumber }   // → { success, headSha, checks: [{ jobId, runId, name, conclusion }] }
+{ type: 'getRunStatuses',  repo, runIds }     // → { success, statuses: { [runId]: { status, conclusion } } }
+{ type: 'rerunJob',        repo, jobId }      // POST /actions/jobs/{jobId}/rerun
+{ type: 'rerunFailedJobs', repo, runId }      // POST /actions/runs/{runId}/rerun-failed-jobs
+{ type: 'rerunRun',        repo, runId }      // POST /actions/runs/{runId}/rerun
+{ type: 'rerunRuns',       repo, runIds, mode } // one POST per run: mode 'failed' → rerun-failed-jobs, 'all' → rerun; → { success, count, errors }
+```
+
 **`refreshPrBase`** — re-PATCH the PR base to force diff recalculation against the latest HEAD:
 ```js
 // content → background
@@ -190,4 +225,4 @@ All messages are sent from content script → background via `chrome.runtime.sen
 { success: true } | { success: false, error: string }
 ```
 
-The background listener must `return true` from `onMessage` for async responses (`action`, `getWorkflowInputs`, `getPrBranch`, `refreshPrBase`).
+The background listener must `return true` from `onMessage` for async responses (`action`, `getWorkflowInputs`, `getPrBranch`, `refreshPrBase`, and every `RETRY_HANDLERS` type).

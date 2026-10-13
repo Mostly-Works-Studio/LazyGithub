@@ -10,6 +10,8 @@ const DEFAULT_CONFIG = {
   prInfoBoxShowAuthor:      true,
   prInfoBoxShowHead:        true,
   prInfoBoxShowBase:        true,
+  showRetryButtons:         true,   // retry icon on failed checks (PR merge box) and failed runs (Actions list)
+  retryMode:                'failed', // 'failed' = re-run only failed jobs | 'all' = re-run the whole workflow run
   prDropdownThreshold:      3,
   commentDropdownThreshold: 4,
   actions: [

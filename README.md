@@ -17,6 +17,7 @@ LazyGitHub is a Chrome extension that injects action buttons directly into GitHu
 - **Customisable button feedback** — configure what the button shows and which toast fires for pending, success, and failure states
 - **After-success redirect** — optionally navigate to the posted comment, the Actions tab, or the Deployments tab on success
 - **PR state gating** — hide buttons on merged or closed PRs
+- **Retry failed checks & runs** — a retry icon appears next to each failed GitHub Actions check in the PR merge box (plus one in the Checks header to re-run them all) and next to failed runs in the Actions list; one click re-runs the failed jobs, or the whole workflow if you prefer, and the page refreshes once GitHub picks it up
 - **Repo filter** — exclude or include repos by exact name or regex
 - **Author filtering** — show comment action buttons only on comments from specific users or bots
 - **Drag-to-reorder** — reorder actions, groups, and conditional rules by dragging the grip handle
@@ -70,6 +71,10 @@ Applies to all repos unless overridden by a group or repo entry. In the settings
 {
   // Controls which repos get buttons injected at all.
   "repoFilter": { "mode": "exclude", "patterns": [] },
+
+  // Retry icon on failed GitHub Actions checks (PR merge box) and failed runs (Actions list).
+  "showRetryButtons": true,
+  "retryMode": "failed",          // "failed" = re-run only the failed jobs | "all" = re-run the whole workflow run
 
   // Named token templates. Actions copy from these as starting points — copies are independent.
   // id: the {placeholder} name used in action inputs.
@@ -209,6 +214,20 @@ Per-repo overrides using the exact `owner/repo` name (no regex). Overrides both 
   }
 }
 ```
+
+---
+
+### Retry failed checks & runs
+
+With `showRetryButtons` on (the default), LazyGitHub adds a small retry icon (↻) wherever GitHub lists a failed GitHub Actions check or run:
+
+| Where | What one click does |
+|---|---|
+| PR merge box, in the **Checks** section header | Re-runs the failed jobs of every workflow run with a failed check — or every job with `retryMode: "all"`; the tooltip shows the count |
+| PR merge box, next to each failed check | Re-runs that check's job — or its whole workflow run with `retryMode: "all"` |
+| Repository **Actions** list (and per-workflow lists), right after each failed run's title | Re-runs that run's failed jobs — or every job with `retryMode: "all"` |
+
+Which items are failed is resolved through the GitHub API, not by reading status icons, so the icon only appears for checks that can actually be re-run (`failure`, `timed_out`, `cancelled`). External CI statuses and checks from other apps are left alone. The icon spins while the request is in flight and turns into a green tick once GitHub accepts the re-run. GitHub's own live status updates lag behind its API, so LazyGitHub polls the API until the new attempt is visible (up to ~12 s) and then reloads the page, which shows the checks as queued straight away. Run detail pages and the PR Checks tab are left untouched because GitHub already has its own **Re-run** controls there. Your token needs the `repo` scope (classic) or `actions: write` (fine-grained) — the scopes the onboarding flow already asks for. Toggle the feature and choose the mode under **Advanced → Retry buttons** in the settings page.
 
 ---
 
@@ -389,14 +408,15 @@ Global config                          ← lowest priority / fallback
 
 ## How It Works
 
-1. **Content script** (`content.js`) runs on every `github.com` page and uses a `MutationObserver` to watch for PR pages and comment threads
+1. **Content script** (`content.js`) runs on every `github.com` page and uses a `MutationObserver` to watch for PR pages, comment threads, and the Actions run list
 2. PR action buttons are injected into the PR header (and sticky header); each hides itself for configured states
 3. Comment action buttons are injected inline next to matching links — hidden until hover, auto-hidden after 5 seconds
 4. On click: if the action has `{input:"..."}` tokens, an input dialog is shown first. Once confirmed, the action is dispatched to the background service worker
 5. The background service worker (`background.js`) calls the GitHub API, resolves config layering, and returns success or error
 6. The button updates to the configured feedback state; a toast appears bottom-right
 7. If a `redirect` is configured, the page navigates after a short delay
-8. Config and token live in `chrome.storage.sync` and hot-reload without a page refresh
+8. Retry icons work the same way: the content script asks the service worker which checks or runs actually failed (via the API), places an icon next to each, and on click sends the re-run request, then reloads the page once GitHub reports the new attempt
+9. Config and token live in `chrome.storage.sync` and hot-reload without a page refresh
 
 ---
 
@@ -405,9 +425,11 @@ Global config                          ← lowest priority / fallback
 | Permission | Why |
 |---|---|
 | `storage` | Save your GitHub token and config |
-| `host_permissions: https://api.github.com/*` | Validate token, dispatch workflows, post comments, create deployments |
+| `tabs` | Open the settings page from the toolbar icon and from in-page prompts |
+| `host_permissions: https://api.github.com/*` | Validate token, dispatch workflows, post comments, create deployments, read check/run status and re-run failed jobs |
+| `host_permissions: https://github.com/*` | Inject buttons into GitHub pages |
 
-No analytics, no phone-home, no data read beyond what is visible on the current PR page.
+No analytics, no phone-home. The only data read is what the current page already shows plus the check and workflow-run status of that PR or repository, used to decide where a retry icon belongs.
 
 ---
 
@@ -422,19 +444,22 @@ Load the folder as an unpacked extension (`chrome://extensions` → Developer mo
 
 There is no build step — the extension is plain JavaScript.
 
+A scheduled GitHub Actions job (`.github/workflows/github-ui-check.yml`) loads real GitHub pages in headless Chrome every few hours and fails, opening an issue, if GitHub changes markup that `content.js` relies on. If you add or change a GitHub selector in `content.js`, mirror it in `.github/ui-check/check-github-ui.mjs` or that job will flag the drift.
+
 ### File Overview
 
 | File | Purpose |
 |---|---|
 | `config-defaults.js` | Single source of truth for `DEFAULT_CONFIG` — loaded by all three JS contexts |
 | `manifest.json` | Chrome extension manifest (MV3) |
-| `content.js` | Injected into GitHub pages — scans PR pages, resolves config, injects buttons, handles `{input:"..."}` prompts |
-| `background.js` | Service worker — GitHub API calls, config layering, action executor for all four action types |
+| `content.js` | Injected into GitHub pages — scans PR and Actions pages, resolves config, injects action and retry buttons, handles `{input:"..."}` prompts |
+| `background.js` | Service worker — GitHub API calls, action executor for all four action types, check/run status lookups and re-runs |
 | `options.html` | Settings page UI — sidebar editor (Token, PR Actions, Comment Actions, Advanced, Groups, Repos), JSON modal |
 | `options.js` | Settings page logic — card builders, drag-sort, validation, save/discard/reset/JSON |
 | `onboarding.html` | First-run onboarding page |
 | `onboarding.js` | Onboarding logic — step progression and inline token validation |
 | `icon*.png` | Extension icons at 16, 32, 48, 128, 256, 512 px |
+| `.github/ui-check/` | GitHub UI compatibility canary (selector contract + Puppeteer check) run by `.github/workflows/github-ui-check.yml` |
 
 ---
 

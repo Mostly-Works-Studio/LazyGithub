@@ -600,6 +600,49 @@ const STYLES = `
   .wd-info-refresh-btn:hover { color: #0969da; }
   .wd-info-refresh-btn:disabled { cursor: default; }
   .wd-info-refresh-btn.wd-spinning { animation: wd-spin 0.8s linear infinite; color: #8c959f; }
+
+  /* Retry icon buttons on failed checks (PR merge box) and failed runs (Actions list) */
+  .wd-retry-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0 4px;
+    padding: 0;
+    border-radius: 6px;
+    vertical-align: middle;
+    color: var(--fgColor-muted, #59636e);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .wd-retry-btn svg { width: 16px; height: 16px; fill: currentColor; }
+  .wd-retry-btn:hover:not(:disabled) {
+    color: var(--fgColor-accent, #0969da);
+    background: var(--control-transparent-bgColor-hover, rgba(208, 215, 222, 0.32));
+    border-color: var(--borderColor-default, #d0d7de);
+  }
+  .wd-retry-btn:disabled { cursor: default; }
+  .wd-retry-btn.wd-loading { color: var(--fgColor-accent, #0969da); }
+  .wd-retry-btn.wd-loading svg { animation: wd-spin 0.8s linear infinite; }
+  .wd-retry-btn.wd-success { color: #1a7f37; }
+  .wd-retry-btn.wd-failure { color: #cf222e; }
+  /* Compact variant that lives inside a row's title (merge-box heading, Actions list link). */
+  .wd-retry-btn.wd-retry-inline { width: 24px; height: 24px; margin: -4px 6px -4px 6px; flex-shrink: 0; }
+  /* Merge-box header variant: same icon, bordered so it reads as a button, and raised above
+     GitHub's full-width expand/collapse overlay (hence the z-index). */
+  .wd-retry-btn.wd-retry-all {
+    margin: 0 8px 0 0;
+    align-self: center;
+    position: relative;
+    z-index: 1;
+    color: var(--fgColor-default, #1f2328);
+    background: var(--button-default-bgColor-rest, #f6f8fa);
+    border-color: var(--borderColor-default, #d0d7de);
+  }
+  .wd-retry-btn.wd-retry-all:hover:not(:disabled) { background: var(--button-default-bgColor-hover, #eef1f4); }
 `;
 
 const styleEl = document.createElement('style');
@@ -1607,12 +1650,371 @@ function injectInfoBox() {
   });
 }
 
+// ── Retry buttons (failed checks in the PR merge box, failed runs in the Actions list) ──
+//
+// The DOM only tells us *where* a check / run is linked (anchors carrying the id in their
+// href). Whether it actually failed comes from the API via background.js, so a GitHub
+// status-icon redesign cannot break detection. Results are cached per page for
+// RETRY_CACHE_TTL so the MutationObserver-driven scan() doesn't hammer the API.
+//
+// Surfaces deliberately NOT covered: the run detail page and the PR Checks tab, where
+// GitHub already offers its own "Re-run" controls.
+
+const RETRY_CACHE_TTL = 30_000;
+const RETRY_POLL_INTERVAL = 1000;   // ms between API polls after an accepted re-run
+const RETRY_POLL_TIMEOUT  = 12_000; // give up polling and reload anyway after this long
+const retryState = { key: null, fetchedAt: 0, data: null, inFlight: false };
+const RETRYABLE  = ['failure', 'timed_out', 'cancelled'];
+
+// Octicons (16px): sync, check, x.
+const RETRY_ICONS = {
+  sync:    '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/></svg>',
+  check:   '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>',
+  x:       '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>',
+};
+
+function parseRepoFromUrl() {
+  return location.pathname.match(/^\/([^/]+\/[^/]+)/)?.[1] ?? null;
+}
+
+// Repository Actions list: /owner/repo/actions or /owner/repo/actions/workflows/<file>.
+function parseActionsListPage() {
+  const m = location.pathname.match(/^\/([^/]+\/[^/]+)\/actions(?:\/workflows\/[^/]+)?\/?$/);
+  return m ? { repo: m[1] } : null;
+}
+
+// Check-run id (= Actions job id) from any of the link shapes GitHub uses for a check:
+//   /owner/repo/pull/N/checks?check_run_id=123
+//   /owner/repo/actions/runs/456/job/123
+//   /owner/repo/runs/123            (legacy "Details" link — must not match /actions/runs/456)
+function checkRunIdFromHref(href) {
+  return href.match(/[?&]check_run_id=(\d+)/)?.[1]
+      ?? href.match(/\/actions\/runs\/\d+\/job\/(\d+)/)?.[1]
+      ?? href.match(/(?<!\/actions)\/runs\/(\d+)(?:[?#]|$)/)?.[1]
+      ?? null;
+}
+
+// 'failed' → re-run only what failed; 'all' → re-run the whole workflow run.
+const retryMode = () => (CONFIG.retryMode === 'all' ? 'all' : 'failed');
+
+// Fetch-through-cache. `apply(data)` runs with the current DOM once data is available,
+// either immediately (cache hit) or from the response callback. A failed lookup is cached
+// too, so a token without `actions` access doesn't trigger a request on every mutation.
+function withRetryData(key, msg, apply) {
+  const fresh = retryState.key === key && Date.now() - retryState.fetchedAt < RETRY_CACHE_TTL;
+  if (fresh) { apply(retryState.data); return; }
+  if (retryState.inFlight) return; // the in-flight callback will apply to the DOM as it is then
+  retryState.inFlight = true;
+  chrome.runtime.sendMessage(msg, res => {
+    retryState.inFlight  = false;
+    retryState.key       = key;
+    retryState.fetchedAt = Date.now();
+    retryState.data      = res?.success ? res : { success: false, error: res?.error };
+    if (!res?.success) console.debug('[LazyGitHub] retry lookup failed:', res?.error);
+    apply(retryState.data);
+    // While this request was in flight the user may have navigated (GitHub keeps the JS
+    // context alive); other scans bailed on `inFlight`, so give the current page a pass now.
+    injectRetryButtons();
+  });
+}
+
+// True when `anchors` need (re)processing: a different page than the cached one, a stale
+// cache, or anchors that appeared after the last snapshot (GitHub live-updates rows).
+function retryNeedsWork(key, anchors) {
+  if (anchors.length === 0) return false;
+  if (retryState.key !== key) return true;
+  if (Date.now() - retryState.fetchedAt >= RETRY_CACHE_TTL) return true;
+  const stamp = String(retryState.fetchedAt);
+  return anchors.some(a => a.dataset.wdRetryStamp !== stamp);
+}
+const stampAnchor = a => { a.dataset.wdRetryStamp = String(retryState.fetchedAt); };
+
+function makeRetryBtn({ title, retryId, onClick }) {
+  const btn = document.createElement('button');
+  btn.type              = 'button';
+  btn.className         = 'wd-retry-btn';
+  btn.innerHTML         = RETRY_ICONS.sync;
+  btn.title             = title;
+  btn.setAttribute('aria-label', title);
+  btn.dataset.wdRetryId = retryId;
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!btn.disabled) onClick(btn);
+  });
+  // Some buttons sit inside a link; keep middle-clicks from opening it in a new tab.
+  btn.addEventListener('auxclick', e => { e.preventDefault(); e.stopPropagation(); });
+  return btn;
+}
+
+// Swap the icon in place (it is always the button's first child).
+const setRetryIcon = (btn, name) => {
+  if (btn.firstElementChild?.tagName === 'svg') btn.firstElementChild.remove(); // icon is always first
+  btn.insertAdjacentHTML('afterbegin', RETRY_ICONS[name]);
+};
+
+// GitHub's own live updates lag well behind the API after a re-run, so we reload the page
+// ourselves — but only once the API reflects the new attempt (or after RETRY_POLL_TIMEOUT),
+// otherwise the reloaded page would still show the old red state.
+function reloadWhenRetryRegistered(isRegistered) {
+  const started = Date.now();
+  const tick = () => isRegistered(yes => {
+    if (yes || Date.now() - started >= RETRY_POLL_TIMEOUT) location.reload();
+    else setTimeout(tick, RETRY_POLL_INTERVAL);
+  });
+  setTimeout(tick, RETRY_POLL_INTERVAL);
+}
+
+// `isRegistered(cb)` asks background whether the re-run is visible yet and calls cb(bool).
+function runRetry(btn, msg, successToast, isRegistered) {
+  if (!TOKEN_CONFIGURED) {
+    showToast({ success: false, message: 'GitHub token not set up yet — opening LazyGitHub settings.' });
+    chrome.runtime.sendMessage({ type: 'openOptions', reason: 'no-token' });
+    return;
+  }
+  const originalTitle = btn.title;
+  btn.disabled = true;
+  btn.title    = 'Retrying…';
+  btn.classList.add('wd-loading');
+  chrome.runtime.sendMessage(msg, res => {
+    btn.classList.remove('wd-loading');
+    if (res?.success) {
+      btn.classList.add('wd-success');
+      setRetryIcon(btn, 'check');
+      btn.title     = 'Queued';
+      showToast({ success: true, message: `${successToast} Reloading once GitHub picks it up…`, duration: RETRY_POLL_TIMEOUT + 2000 });
+      // No cache reset here: the page reloads once the re-run registers, and a refetch in
+      // the meantime would pull the tick out from under the user.
+      reloadWhenRetryRegistered(isRegistered);
+    } else {
+      btn.classList.add('wd-failure');
+      setRetryIcon(btn, 'x');
+      btn.title     = 'Re-run request failed';
+      showToast({ success: false, message: `Retry failed: ${res?.error ?? 'unknown error'}` });
+      setTimeout(() => {
+        btn.classList.remove('wd-failure');
+        setRetryIcon(btn, 'sync');
+        btn.title     = originalTitle;
+        btn.disabled  = false;
+      }, 3000);
+    }
+  });
+}
+
+// Buttons are unique per retryId on a page, so existence checks are global.
+const findRetryBtn   = retryId => document.querySelector(`.wd-retry-btn[data-wd-retry-id="${retryId}"]`);
+const removeRetryBtn = retryId => findRetryBtn(retryId)?.remove();
+
+// Insert a button via `insert(btn)` unless one with this retryId already exists.
+function placeRetryBtn(retryId, makeBtn, insert) {
+  if (findRetryBtn(retryId)) return;
+  insert(makeBtn());
+}
+
+// PR conversation page (merge box / timeline): one icon per failed GitHub Actions check.
+//
+// Two ways to find a check in the DOM:
+//  • Links carrying a check-run id (timeline events, older merge box layouts) — matched by id.
+//  • Rows of the current React merge box, which show "<workflow> / <job> (<event>)" as plain
+//    text and tuck the details link into a "…" menu — matched by that displayed name.
+function injectPrRetryButtons(pr) {
+  if (/\/pull\/\d+\/checks/.test(location.pathname)) return; // GitHub has its own Re-run there
+
+  const section   = document.querySelector('section[aria-label="Checks"]');
+  const rowTitles = [...document.querySelectorAll('[class*="StatusCheckRow-module__title__"]')];
+  const anchorCandidates = [...document.querySelectorAll('a[href*="check_run_id="], a[href*="/runs/"]')]
+    .filter(a => !a.closest('.wd-action-menu, #wd-info-box'))
+    .map(a => ({ a, jobId: checkRunIdFromHref(a.getAttribute('href') ?? '') }))
+    .filter(c => c.jobId);
+
+  const units = [...rowTitles, ...anchorCandidates.map(c => c.a), ...(section ? [section] : [])];
+  const key   = `pr:${pr.repo}#${pr.prNumber}`;
+  if (!retryNeedsWork(key, units)) return;
+
+  withRetryData(key, { type: 'getFailedChecks', repo: pr.repo, prNumber: pr.prNumber }, data => {
+    const checks     = data.checks ?? [];
+    const failedById = new Map(checks.map(c => [c.jobId, c]));
+    const btnFor = (check, jobId) => {
+      const whole = retryMode() === 'all' && check.runId;
+      return makeRetryBtn({
+        title:   whole ? `Re-run the whole workflow for "${check.name}"` : `Re-run "${check.name}"`,
+        retryId: `job-${jobId}`,
+        onClick: btn => runRetry(
+          btn,
+          whole ? { type: 'rerunRun', repo: pr.repo, runId: check.runId } : { type: 'rerunJob', repo: pr.repo, jobId },
+          whole ? `Re-running the workflow for "${check.name}".` : `Re-running "${check.name}".`,
+          prChecksRegistered(pr, [jobId]),
+        ),
+      });
+    };
+
+    // 1. Links: GitHub may link a check twice (name + "Details"); attach to the last link per check.
+    const lastAnchorFor = new Map();
+    for (const c of anchorCandidates) lastAnchorFor.set(c.jobId, c.a);
+    for (const { a, jobId } of anchorCandidates) {
+      stampAnchor(a);
+      const check = failedById.get(jobId);
+      if (!check) { removeRetryBtn(`job-${jobId}`); continue; }
+      if (lastAnchorFor.get(jobId) !== a) continue;
+      placeRetryBtn(`job-${jobId}`, () => btnFor(check, jobId), btn => a.after(btn));
+    }
+
+    // 2. Merge box rows without links: match the displayed name, append the icon to the heading.
+    for (const title of rowTitles) {
+      stampAnchor(title);
+      const heading = title.querySelector('[class*="StatusCheckRow-module__titleHeader__"]') ?? title;
+      if (anchorCandidates.some(c => heading.contains(c.a))) continue; // already handled via its link
+      const check    = matchCheckByDisplayName(checks, headingText(heading));
+      const existing = heading.querySelector('.wd-retry-btn');
+      if (!check) { existing?.remove(); continue; }
+      if (existing && existing.dataset.wdRetryId !== `job-${check.jobId}`) existing.remove();
+      placeRetryBtn(`job-${check.jobId}`, () => { const b = btnFor(check, check.jobId); b.classList.add('wd-retry-inline'); return b; }, btn => heading.append(btn));
+    }
+
+    if (section) stampAnchor(section);
+    injectPrRetryAllButton(pr, checks);
+  });
+}
+
+// Heading text without the status description GitHub nests next to it, or our own icon.
+function headingText(heading) {
+  const clone = heading.cloneNode(true);
+  clone.querySelectorAll('.wd-retry-btn').forEach(el => el.remove());
+  clone.querySelectorAll('[class*="StatusCheckRow-module__titleDescription__"]').forEach(el => el.remove());
+  return clone.textContent.replace(/\s+/g, ' ').trim();
+}
+
+// Merge box rows read "<workflow> / <job> (<event>)"; try the most specific form first.
+function matchCheckByDisplayName(checks, text) {
+  if (!text) return null;
+  const jobPart = text.replace(/\s*\([^)]*\)$/, '').split(' / ').pop();
+  return checks.find(c => c.workflowName && text === `${c.workflowName} / ${c.name} (${c.event})`)
+      ?? checks.find(c => c.workflowName && text === `${c.workflowName} / ${c.name}`)
+      ?? checks.find(c => text === c.name)
+      ?? checks.find(c => jobPart === c.name)
+      ?? null;
+}
+
+// A re-run is "registered" for the PR once the previously failed check-run ids are no longer
+// among the latest check runs (the new attempt replaces them).
+const prChecksRegistered = (pr, jobIds) => cb =>
+  chrome.runtime.sendMessage({ type: 'getFailedChecks', repo: pr.repo, prNumber: pr.prNumber }, res =>
+    cb(!!res?.success && !jobIds.some(id => (res.checks ?? []).some(c => c.jobId === id))));
+
+// For a run, once its status is no longer "completed" (queued / in_progress).
+const runRegistered = (repo, runId) => cb =>
+  chrome.runtime.sendMessage({ type: 'getRunStatuses', repo, runIds: [runId] }, res =>
+    cb(!!res?.success && !!res.statuses?.[runId] && res.statuses[runId].status !== 'completed'));
+
+// Merge box section header: one labelled button that re-runs every failed check at once.
+// The header stays visible even when the checks list is collapsed, so this is the
+// "retry at the top" entry point. Only the new React merge box exposes the section.
+function injectPrRetryAllButton(pr, checks) {
+  const RETRY_ALL_ID = 'pr-all';
+  const runIds  = [...new Set(checks.map(c => c.runId).filter(Boolean))];
+  const section = document.querySelector('section[aria-label="Checks"]');
+  const toggle  = section?.querySelector('button[aria-label="Collapse checks"], button[aria-label="Expand checks"]');
+  if (!toggle || runIds.length === 0) { removeRetryBtn(RETRY_ALL_ID); return; }
+
+  const whole = retryMode() === 'all';
+  const n     = checks.length;
+  placeRetryBtn(RETRY_ALL_ID, () => {
+    const btn = makeRetryBtn({
+      title:   whole
+        ? `Re-run all checks (every job of ${runIds.length} workflow run${runIds.length === 1 ? '' : 's'})`
+        : `Re-run ${n} failed check${n === 1 ? '' : 's'}`,
+      retryId: RETRY_ALL_ID,
+    onClick: btn => runRetry(
+      btn,
+      { type: 'rerunRuns', repo: pr.repo, runIds, mode: retryMode() },
+      whole ? 'Re-running all checks.' : `Re-running ${n} failed check${n === 1 ? '' : 's'}.`,
+      prChecksRegistered(pr, checks.map(c => c.jobId)),
+    ),
+    });
+    btn.classList.add('wd-retry-all'); // header variant: above GitHub's overlay toggle
+    return btn;
+  }, btn => {
+    // Header children: [content, overlay toggle button, chevron]. Sit right before the chevron.
+    const chevron = toggle.nextElementSibling;
+    (chevron ?? toggle).before(btn);
+  });
+}
+
+// /actions and /actions/workflows/<file>: one icon per failed run, right after its title text.
+function injectRunListRetryButtons({ repo }) {
+  const candidates = [...document.querySelectorAll('a[href*="/actions/runs/"]')]
+    .map(a => ({ a, runId: (a.getAttribute('href') ?? '').match(/\/actions\/runs\/(\d+)(?:[?#]|$)/)?.[1] }))
+    .filter(c => c.runId);
+  const runIds = [...new Set(candidates.map(c => c.runId))];
+  const key    = `runs:${repo}`;
+  if (!retryNeedsWork(key, candidates.map(c => c.a))) return;
+  // The cache is per repo, but "All workflows" and each per-workflow list show different
+  // runs (and live updates add new ones). Refetch when any run on screen isn't covered.
+  if (retryState.key === key && runIds.some(id => !(retryState.data?.statuses ?? {})[id])) retryState.fetchedAt = 0;
+  withRetryData(key, { type: 'getRunStatuses', repo, runIds }, data => {
+    const statuses = data.statuses ?? {};
+    for (const { a, runId } of candidates) {
+      stampAnchor(a);
+      const st = statuses[runId];
+      const failed = st?.status === 'completed' && RETRYABLE.includes(st.conclusion);
+      if (!failed) { removeRetryBtn(`run-${runId}`); continue; }
+
+      const whole = retryMode() === 'all';
+      placeRetryBtn(`run-${runId}`, () => makeRetryBtn({
+        title:   whole ? 'Re-run all jobs' : 'Re-run failed jobs',
+        retryId: `run-${runId}`,
+        onClick: btn => runRetry(
+          btn,
+          { type: whole ? 'rerunRun' : 'rerunFailedJobs', repo, runId },
+          whole ? 'Re-running all jobs.' : 'Re-running failed jobs.',
+          runRegistered(repo, runId),
+        ),
+      }), btn => {
+        // Last thing inside the title link, right after the (truncating) title text — the
+        // same spot as in the merge box. The button's click handler cancels the navigation.
+        btn.classList.add('wd-retry-inline');
+        a.append(btn);
+        // GitHub sizes the title with `width:100% !important`, an inline `min-width:95%`
+        // and css-truncate's 125px max-width: the max-width keeps the table cell from
+        // growing with long text, the percentage min-width does the real sizing. Keep that
+        // scheme but make the minimum "the text's own width, capped to the row", so the
+        // icon hugs short titles and long ones still truncate.
+        const title = btn.previousElementSibling;
+        if (title && title.tagName !== 'svg') {
+          const range = document.createRange();
+          range.selectNodeContents(title);
+          const textWidth = Math.ceil(range.getBoundingClientRect().width) + 2;
+          title.style.setProperty('width', 'auto', 'important');
+          // 72px = GitHub's status icon + our 24px icon with their margins.
+          title.style.minWidth = `min(${textWidth}px, calc(100% - 72px))`;
+        }
+      });
+    }
+  });
+}
+
+function injectRetryButtons() {
+  if (!(CONFIG.showRetryButtons ?? true)) return;
+  if (!TOKEN_CONFIGURED || isRepoExcluded()) return;
+
+  const pr = parsePrFromUrl();
+  if (pr) { injectPrRetryButtons(pr); return; }
+
+  const list = parseActionsListPage();
+  if (list) injectRunListRetryButtons(list);
+}
+
 // ── Scanner (runs on load + DOM changes) ─────────────────────────────────────
 
 function scan() {
+  // GitHub's page-swapping navigation (Turbo) replaces <body> and can prune <head>; make
+  // sure our stylesheet and body flag survive before (re)injecting anything.
+  if (!styleEl.isConnected) document.head.appendChild(styleEl);
+  document.body.classList.toggle('wd-token-missing', !TOKEN_CONFIGURED);
   attachPrActionButtons();
   document.querySelectorAll('a[href*="#issuecomment-"]').forEach(attachCommentButtons);
   injectInfoBox();
+  injectRetryButtons();
 }
 
 // Remove every button LazyGitHub injected and clear the guard flags that mark a
@@ -1625,6 +2027,9 @@ function teardownInjectedButtons() {
   document.querySelector('.wd-action-menu')?.remove();
   document.querySelectorAll('[data-wd-build-btn]').forEach(el => delete el.dataset.wdBuildBtn);
   document.querySelectorAll('[data-wd-attached]').forEach(el => delete el.dataset.wdAttached);
+  document.querySelectorAll('.wd-retry-btn').forEach(el => el.remove());
+  document.querySelectorAll('[data-wd-retry-stamp]').forEach(el => delete el.dataset.wdRetryStamp);
+  retryState.fetchedAt = 0;
   // Drop the info box too so its row/visibility settings re-render on the next scan.
   document.getElementById('wd-info-box')?.remove();
   document.body.removeAttribute('data-wd-info-fetching');
@@ -1633,19 +2038,22 @@ function teardownInjectedButtons() {
 function init() {
   chrome.storage.sync.get(['extensionConfig', 'githubToken'], data => {
     GLOBAL_CONFIG    = data.extensionConfig ?? DEFAULT_CONFIG;
-    const pr         = parsePrFromUrl();
-    CONFIG           = resolveConfig(GLOBAL_CONFIG, pr?.repo ?? '');
+    CONFIG           = resolveConfig(GLOBAL_CONFIG, parseRepoFromUrl() ?? '');
     TOKEN_CONFIGURED = !!data.githubToken;
-    document.body.classList.toggle('wd-token-missing', !TOKEN_CONFIGURED);
     scan();
-    new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+    // Observe <html>, not <body>: Turbo navigation swaps the body element wholesale, which
+    // would leave a body-scoped observer watching a detached node.
+    new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
+    // Belt and braces for navigations that swap the body: rescan when Turbo says it's done.
+    for (const evt of ['turbo:load', 'turbo:render', 'pjax:end', 'popstate']) {
+      window.addEventListener(evt, () => scan());
+    }
   });
 
   chrome.storage.onChanged.addListener(changes => {
     if (changes.extensionConfig) {
       GLOBAL_CONFIG = changes.extensionConfig.newValue ?? DEFAULT_CONFIG;
-      const pr      = parsePrFromUrl();
-      CONFIG        = resolveConfig(GLOBAL_CONFIG, pr?.repo ?? '');
+      CONFIG        = resolveConfig(GLOBAL_CONFIG, parseRepoFromUrl() ?? '');
       // Rebuild injected buttons from the new config — no page reload needed.
       teardownInjectedButtons();
       scan();

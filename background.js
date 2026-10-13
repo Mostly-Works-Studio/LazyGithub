@@ -469,6 +469,107 @@ chrome.runtime.onInstalled.addListener(details => {
   }
 });
 
+
+// ── Retry failed checks / jobs ────────────────────────────────────────────────
+
+// Check-run / job conclusions that make sense to re-run. `action_required`,
+// `skipped`, `neutral` and in-flight states are deliberately excluded.
+const RETRYABLE_CONCLUSIONS = new Set(['failure', 'timed_out', 'cancelled']);
+
+const runIdFromUrl = url => url?.match(/\/actions\/runs\/(\d+)/)?.[1] ?? null;
+
+// Turn "GitHub API 403: {"message":"..."}" into something a toast can show.
+function apiErrorMessage(err) {
+  const m = String(err?.message ?? err).match(/^GitHub API (\d+): ([\s\S]*)$/);
+  if (!m) return String(err?.message ?? err);
+  try {
+    const parsed = JSON.parse(m[2]);
+    if (parsed?.message) return `${parsed.message} (HTTP ${m[1]})`;
+  } catch { /* not JSON */ }
+  return `HTTP ${m[1]}`;
+}
+
+// Failed GitHub Actions check runs on the PR's current head commit. For Actions,
+// a check run id *is* the job id, so each entry can be re-run via /actions/jobs/{id}/rerun.
+async function fetchFailedChecksForPr(repo, prNumber, token) {
+  const pr  = await githubGet(`/repos/${repo}/pulls/${prNumber}`, token);
+  const sha = pr.head?.sha;
+  if (!sha) return { headSha: null, checks: [] };
+
+  const checks = [];
+  for (let page = 1; page <= 3; page++) {
+    const res  = await githubGet(`/repos/${repo}/commits/${sha}/check-runs?per_page=100&page=${page}`, token);
+    const runs = res.check_runs ?? [];
+    for (const cr of runs) {
+      if (cr.app?.slug !== 'github-actions') continue;          // external CI can't be re-run from here
+      if (!RETRYABLE_CONCLUSIONS.has(cr.conclusion)) continue;
+      checks.push({ jobId: String(cr.id), runId: runIdFromUrl(cr.details_url), name: cr.name, conclusion: cr.conclusion });
+    }
+    if (runs.length < 100) break;
+  }
+
+  // The new merge box shows checks as "<workflow name> / <job name> (<event>)" with no link,
+  // so content.js matches rows by that text. Attach workflow name + event per run.
+  const runIds = [...new Set(checks.map(c => c.runId).filter(Boolean))].slice(0, 10);
+  const runInfo = {};
+  await Promise.all(runIds.map(async id => {
+    try {
+      const r = await githubGet(`/repos/${repo}/actions/runs/${id}`, token);
+      runInfo[id] = { workflowName: r.name ?? '', event: r.event ?? '' };
+    } catch { /* leave unknown; name-only matching still works */ }
+  }));
+  for (const c of checks) Object.assign(c, runInfo[c.runId] ?? {});
+
+  return { headSha: sha, checks };
+}
+
+// Status + conclusion for the given run ids. One list call covers the recent runs
+// shown on /actions; anything older (filtered views) is fetched individually, capped.
+async function fetchRunStatuses(repo, runIds, token) {
+  const wanted   = new Set(runIds.map(String));
+  const statuses = {};
+  try {
+    const list = await githubGet(`/repos/${repo}/actions/runs?per_page=100`, token);
+    for (const r of list.workflow_runs ?? []) {
+      if (wanted.has(String(r.id))) statuses[r.id] = { status: r.status, conclusion: r.conclusion };
+    }
+  } catch { /* fall through to individual fetches */ }
+
+  const missing = runIds.map(String).filter(id => !statuses[id]).slice(0, 20);
+  await Promise.all(missing.map(async id => {
+    try {
+      const r = await githubGet(`/repos/${repo}/actions/runs/${id}`, token);
+      statuses[id] = { status: r.status, conclusion: r.conclusion };
+    } catch { /* leave unknown */ }
+  }));
+  return statuses;
+}
+
+// Read-only lookups and re-run commands used by the retry buttons in content.js.
+// Every handler receives the message and a token and returns the response object.
+const RETRY_HANDLERS = {
+  getFailedChecks: async (msg, token) => ({ success: true, ...(await fetchFailedChecksForPr(msg.repo, msg.prNumber, token)) }),
+  getRunStatuses:  async (msg, token) => ({ success: true, statuses: await fetchRunStatuses(msg.repo, msg.runIds ?? [], token) }),
+  rerunFailedJobs: async (msg, token) => { await githubPost(`/repos/${msg.repo}/actions/runs/${msg.runId}/rerun-failed-jobs`, {}, token); return { success: true }; },
+  rerunRun:        async (msg, token) => { await githubPost(`/repos/${msg.repo}/actions/runs/${msg.runId}/rerun`, {}, token); return { success: true }; },
+  rerunJob:        async (msg, token) => { await githubPost(`/repos/${msg.repo}/actions/jobs/${msg.jobId}/rerun`, {}, token); return { success: true }; },  // Re-run several workflow runs at once (the merge box "retry all" button). `mode`
+  // 'failed' re-runs only each run's failed jobs; 'all' re-runs every job. Partial
+  // failures are reported, not thrown, so one bad run doesn't hide the others.
+  rerunRuns: async (msg, token) => {
+    const runIds = [...new Set((msg.runIds ?? []).map(String))];
+    const errors = [];
+    for (const runId of runIds) {
+      const path = msg.mode === 'all'
+        ? `/repos/${msg.repo}/actions/runs/${runId}/rerun`
+        : `/repos/${msg.repo}/actions/runs/${runId}/rerun-failed-jobs`;
+      try { await githubPost(path, {}, token); }
+      catch (err) { errors.push(`run ${runId}: ${apiErrorMessage(err)}`); }
+    }
+    if (errors.length === runIds.length && runIds.length) return { success: false, error: errors.join('; ') };
+    return { success: true, count: runIds.length - errors.length, errors };
+  },
+};
+
 chrome.action.onClicked.addListener(() => {
   chrome.runtime.openOptionsPage();
 });
@@ -534,6 +635,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ success: true, inputs });
       } catch {
         sendResponse({ success: false, inputs: [] });
+      }
+    })();
+    return true;
+  }
+
+  if (RETRY_HANDLERS[msg.type]) {
+    (async () => {
+      const { token } = await getStoredData();
+      if (!token) { sendResponse({ success: false, error: 'No GitHub token configured.' }); return; }
+      try {
+        sendResponse(await RETRY_HANDLERS[msg.type](msg, token));
+      } catch (err) {
+        sendResponse({ success: false, error: apiErrorMessage(err) });
       }
     })();
     return true;

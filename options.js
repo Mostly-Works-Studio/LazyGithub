@@ -502,9 +502,12 @@ document.getElementById('repo-filter-section').querySelector('.form-section-head
   document.getElementById('repo-filter-section').classList.toggle('collapsed');
 });
 
-document.getElementById('pr-info-box-section').querySelector('.form-section-header').addEventListener('click', () => {
-  document.getElementById('pr-info-box-section').classList.toggle('collapsed');
-});
+// Collapsible sections whose header toggles them (the switch inside the header stops
+// propagation so flipping it doesn't also expand/collapse).
+for (const id of ['pr-info-box-section', 'retry-buttons-section']) {
+  const section = document.getElementById(id);
+  section?.querySelector('.form-section-header').addEventListener('click', () => section.classList.toggle('collapsed'));
+}
 const reposCount         = document.getElementById('repos-count');
 
 let lastSavedConfig = DEFAULT_CONFIG;
@@ -2273,6 +2276,9 @@ function configToForm(config) {
   document.getElementById('pr-info-box-show-author').checked  = config.prInfoBoxShowAuthor  ?? true;
   document.getElementById('pr-info-box-show-head').checked    = config.prInfoBoxShowHead    ?? true;
   document.getElementById('pr-info-box-show-base').checked    = config.prInfoBoxShowBase    ?? true;
+  document.getElementById('show-retry-buttons').checked       = config.showRetryButtons     ?? true;
+  const retryModeInput = document.querySelector(`input[name="retry-mode"][value="${config.retryMode === 'all' ? 'all' : 'failed'}"]`);
+  if (retryModeInput) retryModeInput.checked = true;
 
   // Split actions by trigger into the two visual sections
   const prActions      = (config.actions ?? []).filter(a => a.trigger !== 'comment');
@@ -2311,6 +2317,8 @@ function formToGlobalConfig() {
     prInfoBoxShowAuthor:      document.getElementById('pr-info-box-show-author').checked,
     prInfoBoxShowHead:        document.getElementById('pr-info-box-show-head').checked,
     prInfoBoxShowBase:        document.getElementById('pr-info-box-show-base').checked,
+    showRetryButtons:         document.getElementById('show-retry-buttons').checked,
+    retryMode:                document.querySelector('input[name="retry-mode"]:checked')?.value ?? 'failed',
     prDropdownThreshold:      (v => isNaN(v) ? 3 : v)(parseInt(document.getElementById('pr-dropdown-threshold').value,      10)),
     commentDropdownThreshold: (v => isNaN(v) ? 4 : v)(parseInt(document.getElementById('comment-dropdown-threshold').value,  10)),
     prDropdownLabel:          document.getElementById('pr-dropdown-label').value.trim()      || undefined,

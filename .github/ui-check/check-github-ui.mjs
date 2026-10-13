@@ -50,6 +50,11 @@ const MIN_COMMENTS   = 2;
 //                    placeholder until GitHub renders into it)
 //   expectText       regex the matched element's text must satisfy
 //   scope 'comment'  evaluated once per `#issuecomment-<id>` discovered via permalinks
+//   pages            fixture kinds the family applies to: 'pr' (PR conversation), 'pr-checks'
+//                    (PR Checks tab), 'actions-list' (/actions).
+//                    Defaults to ['pr', 'pr-checks']. An empty list marks signed-in-only
+//                    markup the anonymous canary cannot see: never evaluated, but the drift
+//                    check still keeps it in sync with content.js.
 //
 // Keep this list in sync with content.js — the drift check below fails the job when a
 // selector appears in one place but not the other.
@@ -104,6 +109,7 @@ const CONTRACT = [
     description: 'Timestamp permalinks on issue comments (comment buttons attach after these)',
     usedBy: 'scan → attachCommentButtons',
     severity: 'fail',
+    pages: ['pr'],
     selectors: ['a[href*="#issuecomment-"]'],
   },
   {
@@ -112,6 +118,7 @@ const CONTRACT = [
     usedBy: 'getCommentAuthor',
     severity: 'fail',
     scope: 'comment',
+    pages: ['pr'],
     selectors: ['#issuecomment-{id}'],
   },
   {
@@ -120,9 +127,85 @@ const CONTRACT = [
     usedBy: 'getCommentAuthor',
     severity: 'fail',
     scope: 'comment',
+    pages: ['pr'],
     selectors: ['[data-hovercard-type="user"]', '.author'],
   },
+
+  // ── Retry buttons (content.js: injectRetryButtons) ──
+  {
+    id: 'pr-check-links',
+    description: 'Links carrying a check-run id (merge box "Details"; the Checks tab is the anonymous-visible proxy)',
+    usedBy: 'injectPrRetryButtons',
+    severity: 'fail',
+    pages: ['pr-checks'],
+    selectors: ['a[href*="check_run_id="], a[href*="/runs/"]'],
+  },
+  {
+    id: 'pr-merge-box-checks-section',
+    description: 'The merge box "Checks" section (hosts the "Re-run failed checks" button); signed-in only',
+    usedBy: 'injectPrRetryAllButton',
+    severity: 'fail',
+    pages: [],
+    selectors: ['section[aria-label="Checks"]'],
+  },
+  {
+    id: 'pr-merge-box-checks-toggle',
+    description: 'Expand/collapse toggle in that section header; the button is placed before its chevron; signed-in only',
+    usedBy: 'injectPrRetryAllButton',
+    severity: 'fail',
+    pages: [],
+    selectors: ['button[aria-label="Collapse checks"], button[aria-label="Expand checks"]'],
+  },
+  {
+    id: 'pr-merge-box-check-row-title',
+    description: 'Title container of a merge-box check row (rows carry no link; matched by displayed name); signed-in only',
+    usedBy: 'injectPrRetryButtons',
+    severity: 'fail',
+    pages: [],
+    selectors: ['[class*="StatusCheckRow-module__title__"]'],
+  },
+  {
+    id: 'pr-merge-box-check-row-heading',
+    description: 'Heading inside that row holding "<workflow> / <job> (<event>)"; the icon is appended to it; signed-in only',
+    usedBy: 'injectPrRetryButtons',
+    severity: 'fail',
+    pages: [],
+    selectors: ['[class*="StatusCheckRow-module__titleHeader__"]'],
+  },
+  {
+    id: 'pr-merge-box-check-row-description',
+    description: 'Status text next to the heading, stripped before name matching; signed-in only',
+    usedBy: 'headingText',
+    severity: 'warn',
+    pages: [],
+    selectors: ['[class*="StatusCheckRow-module__titleDescription__"]'],
+  },
+  {
+    id: 'actions-run-links',
+    description: 'Run links in the repository Actions list (retry icon goes inside, after the status icon)',
+    usedBy: 'injectRunListRetryButtons',
+    severity: 'fail',
+    pages: ['actions-list'],
+    selectors: ['a[href*="/actions/runs/"]'],
+  },
 ];
+
+const DEFAULT_PAGES = ['pr', 'pr-checks'];
+const familyAppliesTo = (fam, kind) => (fam.pages ?? DEFAULT_PAGES).includes(kind);
+
+// What the URL must look like per fixture kind (mirrors parsePrFromUrl / parseActionsListPage).
+const EXPECT_PATH = {
+  'pr':           { re: /\/pull\/\d+/,                          usedBy: 'parsePrFromUrl' },
+  'pr-checks':    { re: /\/pull\/\d+\/checks/,                 usedBy: 'parsePrFromUrl' },
+  'actions-list': { re: /\/actions(\/workflows\/[^/]+)?\/?$/, usedBy: 'parseActionsListPage' },
+};
+
+// Selector to wait for before evaluating, so client-rendered parts have mounted.
+const READY_SELECTOR = {
+  'pr':           '[data-component="PH_Actions"], .gh-header-actions',
+  'pr-checks':    'a[href*="check_run_id="]',
+  'actions-list': 'a[href*="/actions/runs/"]',
+};
 
 // Selectors content.js uses that are intentionally not part of the GitHub contract.
 const DRIFT_IGNORE = /wd-/; // anything LazyGitHub injects itself (.wd-*, #wd-*, [data-wd-*])
@@ -167,34 +250,65 @@ async function api(pathname) {
   return res.json();
 }
 
+function kindFromUrl(url) {
+  if (/\/pull\/\d+\/checks/.test(url)) return 'pr-checks';
+  if (/\/pull\/\d+/.test(url))          return 'pr';
+  if (/\/actions(\/workflows\/[^/]+)?\/?(\?.*)?$/.test(url)) return 'actions-list';
+  return 'pr';
+}
+
 async function discoverFixtures() {
   const explicit = (process.env.UI_CHECK_PR_URLS ?? '').split(/[\s,]+/).filter(Boolean);
-  if (explicit.length) return explicit.map(url => ({ url, label: 'explicit' }));
+  if (explicit.length) return explicit.map(url => ({ url, kind: kindFromUrl(url), label: 'explicit' }));
 
   const repos = [...new Set([process.env.GITHUB_REPOSITORY, ...FALLBACK_REPOS].filter(Boolean))];
   const fixtures = [];
 
-  // One open and one closed/merged PR so both header/state variants are exercised.
-  for (const state of ['open', 'closed']) {
+  // Try each repo in turn until `find` yields a fixture for this surface.
+  const discover = async (what, find) => {
     for (const repo of repos) {
       try {
-        // /pulls omits comment counts; /issues includes them and flags PRs via `pull_request`.
-        const issues = await api(`/repos/${repo}/issues?state=${state}&sort=updated&direction=desc&per_page=50`);
-        const pick = issues.find(i => i.pull_request && !i.locked && (i.comments ?? 0) >= MIN_COMMENTS);
-        if (pick) {
-          fixtures.push({ url: pick.html_url, label: `${state} PR, ${pick.comments} comments` });
-          break;
-        }
+        const fx = await find(repo);
+        if (fx) { fixtures.push(fx); return; }
       } catch (err) {
-        console.warn(`  discovery: ${repo} (${state}) skipped — ${err.message}`);
+        console.warn(`  discovery: ${what} via ${repo} skipped — ${err.message}`);
       }
     }
+    console.warn(`  discovery: no fixture found for ${what}`);
+  };
+
+  // One open and one closed/merged PR so both header/state variants are exercised.
+  for (const state of ['open', 'closed']) {
+    await discover(`${state} PR`, async repo => {
+      // /pulls omits comment counts; /issues includes them and flags PRs via `pull_request`.
+      const issues = await api(`/repos/${repo}/issues?state=${state}&sort=updated&direction=desc&per_page=50`);
+      const pick = issues.find(i => i.pull_request && !i.locked && (i.comments ?? 0) >= MIN_COMMENTS);
+      return pick && { url: pick.html_url, kind: 'pr', label: `${state} PR, ${pick.comments} comments` };
+    });
   }
+
+  // A PR that actually has checks, for the Checks tab (prefer one with failures).
+  await discover('PR Checks tab', async repo => {
+    for (const status of ['failure', 'success']) {
+      const q   = encodeURIComponent(`repo:${repo} is:pr status:${status}`);
+      const res = await api(`/search/issues?q=${q}&sort=updated&per_page=1`);
+      const item = res.items?.[0];
+      if (item) return { url: `${item.html_url}/checks`, kind: 'pr-checks', label: `PR with ${status} checks` };
+    }
+    return null;
+  });
+
+  // Repository Actions list.
+  await discover('Actions run list', async repo => {
+    const res = await api(`/repos/${repo}/actions/runs?per_page=1`);
+    return res.total_count > 0 ? { url: `https://github.com/${repo}/actions`, kind: 'actions-list', label: `${res.total_count} runs` } : null;
+  });
+
   return fixtures;
 }
 
 // ─── Page evaluation (runs inside the browser) ────────────────────────────────
-function evaluateContract(contract) {
+function evaluateContract(contract, kind) {
   const pick = (root, selectors, fam) => {
     for (const sel of selectors) {
       let els = [...root.querySelectorAll(sel)];
@@ -211,7 +325,8 @@ function evaluateContract(contract) {
   const results = {};
   const anchors = {};
 
-  for (const fam of contract.filter(f => !f.scope)) {
+  const applies = fam => (fam.pages ?? ['pr', 'pr-checks']).includes(kind);
+  for (const fam of contract.filter(f => !f.scope && applies(f))) {
     let root = document;
     if (fam.within) {
       root = anchors[fam.within];
@@ -229,7 +344,7 @@ function evaluateContract(contract) {
       .filter(Boolean),
   )].slice(0, 10);
 
-  for (const fam of contract.filter(f => f.scope === 'comment')) {
+  for (const fam of contract.filter(f => f.scope === 'comment' && applies(f))) {
     const isContainerLookup = fam.selectors.some(s => s.includes('{id}'));
     let hits = 0; let matched = null;
     for (const id of ids) {
@@ -282,11 +397,11 @@ async function loadFixture(browser, fixture) {
       if (status >= 400) throw new Error(`HTTP ${status}`);
 
       // Give the React header a moment to hydrate, then scroll so the sticky header mounts.
-      await page.waitForSelector('[data-component="PH_Actions"], .gh-header-actions', { timeout: 15_000 }).catch(() => {});
+      await page.waitForSelector(READY_SELECTOR[fixture.kind] ?? 'body', { timeout: 15_000 }).catch(() => {});
       await page.evaluate(() => window.scrollTo(0, 800));
       await sleep(1_500);
 
-      const evaluation = await page.evaluate(evaluateContract, CONTRACT);
+      const evaluation = await page.evaluate(evaluateContract, CONTRACT, fixture.kind);
       return { page, evaluation };
     } catch (err) {
       lastErr = err;
@@ -314,7 +429,7 @@ function renderMarkdown(report) {
 
   for (const fx of report.fixtures) {
     lines.push(`### ${fx.url}`);
-    lines.push(`_${fx.label}_ · UI variant: \`${fx.uiVariant ?? 'n/a'}\``);
+    lines.push(`_${fx.kind} · ${fx.label}_ · UI variant: \`${fx.uiVariant ?? 'n/a'}\``);
     lines.push('');
     if (fx.error) {
       lines.push(`❌ Could not load page: ${fx.error}`);
@@ -333,7 +448,7 @@ function renderMarkdown(report) {
   const failing = report.fixtures.flatMap(fx => (fx.rows ?? []).filter(r => !r.ok && r.severity === 'fail').map(r => r.id));
   if (failing.length) {
     lines.push('### What to do');
-    lines.push('GitHub changed its PR page markup. Open one of the PRs above in Chrome, inspect the element the failing family describes,');
+    lines.push('GitHub changed its page markup. Open one of the PRs above in Chrome, inspect the element the failing family describes,');
     lines.push('update the selector list in `content.js` (keep the old one as a fallback), then mirror the change in `CONTRACT` inside');
     lines.push('`.github/ui-check/check-github-ui.mjs`. Screenshots and HTML dumps for failing pages are attached to the workflow run as artifacts.');
     lines.push('');
@@ -352,7 +467,7 @@ async function main() {
 
   console.log('▶ Discovering fixture PRs…');
   const fixtures = await discoverFixtures();
-  for (const f of fixtures) console.log(`  • ${f.url} (${f.label})`);
+  for (const f of fixtures) console.log(`  • [${f.kind}] ${f.url} (${f.label})`);
   if (!fixtures.length) console.log('  ❌ none found');
 
   const browser = await puppeteer.launch({
@@ -376,12 +491,13 @@ async function main() {
       } else {
         entry.uiVariant = evaluation.uiVariant;
         entry.title     = evaluation.title;
-        entry.rows = CONTRACT.map(fam => ({
+        entry.rows = CONTRACT.filter(fam => familyAppliesTo(fam, fixture.kind)).map(fam => ({
           id: fam.id, severity: fam.severity, usedBy: fam.usedBy, description: fam.description,
           ...evaluation.results[fam.id],
         }));
-        if (!/\/pull\/\d+/.test(evaluation.finalPath)) {
-          entry.rows.unshift({ id: 'url-pattern', severity: 'fail', usedBy: 'parsePrFromUrl', ok: false, reason: `final path "${evaluation.finalPath}" does not match /pull/<n>` });
+        const expect = EXPECT_PATH[fixture.kind];
+        if (expect && !expect.re.test(evaluation.finalPath)) {
+          entry.rows.unshift({ id: 'url-pattern', severity: 'fail', usedBy: expect.usedBy, ok: false, reason: `final path "${evaluation.finalPath}" does not match ${expect.re}` });
         }
         for (const row of entry.rows) {
           console.log(`  ${icon(row)} ${row.id.padEnd(26)} ${row.ok ? `${row.matched}  (${row.count})` : row.reason}`);
