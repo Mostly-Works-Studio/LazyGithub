@@ -425,9 +425,8 @@ Global config                          ← lowest priority / fallback
 | Permission | Why |
 |---|---|
 | `storage` | Save your GitHub token and config |
-| `tabs` | Open the settings page from the toolbar icon and from in-page prompts |
 | `host_permissions: https://api.github.com/*` | Validate token, dispatch workflows, post comments, create deployments, read check/run status and re-run failed jobs |
-| `host_permissions: https://github.com/*` | Inject buttons into GitHub pages |
+| `host_permissions: https://github.com/*` | Inject buttons into GitHub pages and detect when the org SSO popup redirects back to GitHub so it can auto-close |
 
 No analytics, no phone-home. The only data read is what the current page already shows plus the check and workflow-run status of that PR or repository, used to decide where a retry icon belongs.
 

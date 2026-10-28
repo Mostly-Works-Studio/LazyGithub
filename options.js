@@ -272,8 +272,11 @@ function buildTrackedSsoUrl(ssoUrl, login) {
 }
 
 // Opened as a small centered popup window (not a plain '_blank' tab) so the
-// auto-close reads as an expected OAuth-style handoff. Requires the "tabs"
-// permission and host access to github.com to read the popup's URL.
+// auto-close reads as an expected OAuth-style handoff. Reading the popup's URL
+// in chrome.tabs.onUpdated only needs host access to github.com (declared in
+// host_permissions and via the content-script match). Do NOT add the "tabs"
+// permission for this: it is redundant here and makes Chrome warn users that
+// the extension can "read your browsing history" and disable it on update.
 function openSsoPopup(url) {
   const w = 520, h = 720;
   const left = Math.round(window.screenX + (window.outerWidth  - w) / 2);
@@ -502,11 +505,15 @@ document.getElementById('repo-filter-section').querySelector('.form-section-head
   document.getElementById('repo-filter-section').classList.toggle('collapsed');
 });
 
-// Collapsible sections whose header toggles them (the switch inside the header stops
-// propagation so flipping it doesn't also expand/collapse).
+// Collapsible sections whose header toggles them. The switch inside the header stops
+// propagation so flipping it doesn't also expand/collapse. Wired here rather than as
+// an inline onclick attribute, which the extension page CSP (script-src 'self') blocks.
 for (const id of ['pr-info-box-section', 'retry-buttons-section']) {
   const section = document.getElementById(id);
-  section?.querySelector('.form-section-header').addEventListener('click', () => section.classList.toggle('collapsed'));
+  const header  = section?.querySelector('.form-section-header');
+  if (!header) continue;
+  header.addEventListener('click', () => section.classList.toggle('collapsed'));
+  header.querySelector('.switch')?.addEventListener('click', e => e.stopPropagation());
 }
 const reposCount         = document.getElementById('repos-count');
 
